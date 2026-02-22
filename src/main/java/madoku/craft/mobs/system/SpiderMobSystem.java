@@ -1,6 +1,9 @@
 package madoku.craft.mobs.system;
 
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import madoku.craft.API.system.MadokuInfoDebugSystem;
 import madoku.craft.mobs.MadokuCraftMobs;
@@ -26,6 +29,7 @@ import net.minecraft.world.ServerWorldAccess;
 public final class SpiderMobSystem {
 	private static final String LOG_SOURCE = "MOBS.Spider";
 	private static SpiderMobConfig activeConfig;
+	private static final Map<UUID, SpawnReason> PENDING_CAVE_REPLACEMENTS = new ConcurrentHashMap<>();
 
 	private SpiderMobSystem() {
 	}
@@ -44,15 +48,24 @@ public final class SpiderMobSystem {
 			}
 			SpiderMobConfig config = activeConfig;
 			if (config != null && config.enabled() && world instanceof ServerWorld serverWorld) {
+				if (spider.getType() == EntityType.SPIDER) {
+					SpawnReason replacementSpawnReason = PENDING_CAVE_REPLACEMENTS.remove(spider.getUuid());
+					if (replacementSpawnReason != null) {
+						replaceLoadedSpiderWithCaveSpider(spider, serverWorld, replacementSpawnReason);
+						return;
+					}
+				}
 				applyConfig(spider, config, serverWorld.getDifficulty());
 			}
 		});
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> PENDING_CAVE_REPLACEMENTS.remove(entity.getUuid()));
 
 		MadokuCraftMobs.LOGGER.info("Madoku Craft Mobs: spider system hooks registered.");
 	}
 
 	private static void reloadConfig() {
 		activeConfig = SpiderMobConfig.load();
+		PENDING_CAVE_REPLACEMENTS.clear();
 		if (activeConfig.enabled()) {
 			MadokuInfoDebugSystem.info(
 				LOG_SOURCE,
@@ -124,8 +137,7 @@ public final class SpiderMobSystem {
 		);
 
 		if (outcome == SpawnOutcome.CAVE_SPIDER) {
-			spawnReplacementCaveSpider(spider, world, difficulty, spawnReason);
-			spider.discard();
+			queueCaveSpiderReplacement(spider, spawnReason);
 		} else if (outcome == SpawnOutcome.SPIDER_JOCKEY) {
 			spawnSpiderJockey(spider, world, difficulty);
 		}
@@ -140,6 +152,23 @@ public final class SpiderMobSystem {
 			MobSystemUtil.roundToTwoDecimals(caveSpiderWeight),
 			MobSystemUtil.roundToTwoDecimals(spiderJockeyWeight)
 		);
+	}
+
+	private static void queueCaveSpiderReplacement(SpiderEntity spider, SpawnReason spawnReason) {
+		if (spider == null || spawnReason == null) {
+			return;
+		}
+		PENDING_CAVE_REPLACEMENTS.put(spider.getUuid(), spawnReason);
+	}
+
+	private static void replaceLoadedSpiderWithCaveSpider(SpiderEntity spider, ServerWorld serverWorld, SpawnReason spawnReason) {
+		if (spider == null || serverWorld == null || spider.isRemoved()) {
+			return;
+		}
+
+		LocalDifficulty localDifficulty = serverWorld.getLocalDifficulty(spider.getBlockPos());
+		spawnReplacementCaveSpider(spider, serverWorld, localDifficulty, spawnReason);
+		spider.discard();
 	}
 
 	private static void applyConfig(SpiderEntity spider, SpiderMobConfig config, Difficulty difficulty) {
@@ -247,7 +276,7 @@ public final class SpiderMobSystem {
 		);
 		skeleton.initialize(world, difficulty, SpawnReason.JOCKEY, null);
 		SkeletonMobSystem.ensureBowEquipped(skeleton);
-		serverWorld.spawnEntityAndPassengers(skeleton);
+		// The spider is still in initialize() and not added yet; let vanilla spawn this passenger with the spider.
 		skeleton.startRiding(spider);
 	}
 
