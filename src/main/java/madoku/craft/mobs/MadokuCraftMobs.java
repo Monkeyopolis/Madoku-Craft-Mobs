@@ -1,7 +1,9 @@
 package madoku.craft.mobs;
 
 import madoku.craft.API.system.MadokuInfoDebugSystem;
+import madoku.craft.API.system.MadokuTickSystem;
 import madoku.craft.mobs.system.CreeperMobSystem;
+import madoku.craft.mobs.system.PillagerMobSystem;
 import madoku.craft.mobs.system.SkeletonMobSystem;
 import madoku.craft.mobs.system.SpiderMobSystem;
 import madoku.craft.mobs.system.ZombieMobSystem;
@@ -21,12 +23,18 @@ public class MadokuCraftMobs implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		MadokuInfoDebugSystem.info(LOG_SOURCE, "Initializing {}.", MOD_ID);
+		infoDebug(LOG_SOURCE, "Initializing {}.", MOD_ID);
+		MadokuTickSystem.init();
 		ZombieMobSystem.init();
 		SpiderMobSystem.init();
 		CreeperMobSystem.init();
 		SkeletonMobSystem.init();
-		MadokuInfoDebugSystem.info(LOG_SOURCE, "{} systems ready.", MOD_ID);
+		PillagerMobSystem.init();
+		infoDebug(LOG_SOURCE, "{} systems ready.", MOD_ID);
 		LOGGER.info("Madoku Craft Mobs initialized.");
+	}
+
+	public static void infoDebug(String source, String message, Object... args) {
+		MadokuInfoDebugSystem.info(LOGGER, source, message, args);
 	}
 }

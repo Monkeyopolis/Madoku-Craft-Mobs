@@ -1,11 +1,13 @@
 package madoku.craft.mobs.system;
 
-import madoku.craft.API.system.MadokuInfoDebugSystem;
+import madoku.craft.mobs.MadokuCraftMobs;
+import madoku.craft.mobs.mixin.MobEntityExperienceAccessor;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttribute;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
 import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.MinecraftServer;
@@ -38,10 +40,6 @@ public final class MobSystemUtil {
 		if (value != null) {
 			setBaseValue(entity, attribute, value);
 		}
-	}
-
-	public static void applyUniversalStats(LivingEntity entity, MobConfigJsonUtil.UniversalMobStats stats) {
-		applyUniversalStats(entity, stats, null);
 	}
 
 	public static void applyUniversalStats(
@@ -80,15 +78,14 @@ public final class MobSystemUtil {
 			resolveDifficultyAdjustedOptionalValue(stats.knockbackResistance(), difficulty, hardcore, KNOCKBACK_RESISTANCE_DIFFICULTY_STEP, 0.0)
 		);
 		setBaseValueIfPresent(entity, EntityAttributes.SCALE, stats.scale());
+		applyExperienceDrop(entity, stats.experienceDrop());
 	}
 
-	public static double resolveDifficultyAdjustedValue(
-		Difficulty difficulty,
-		double baseValue,
-		double step,
-		double minimum
-	) {
-		return resolveDifficultyAdjustedValue(difficulty, false, baseValue, step, minimum);
+	public static void applyExperienceDrop(LivingEntity entity, Integer experienceDrop) {
+		if (!(entity instanceof MobEntity mobEntity) || experienceDrop == null) {
+			return;
+		}
+		((MobEntityExperienceAccessor) mobEntity).madokuCraftMobs$setExperiencePoints(Math.max(0, experienceDrop));
 	}
 
 	public static double resolveDifficultyAdjustedValue(
@@ -104,15 +101,6 @@ public final class MobSystemUtil {
 
 	public static double resolveDifficultyAdjustedInverseValue(
 		Difficulty difficulty,
-		double baseValue,
-		double step,
-		double minimum
-	) {
-		return resolveDifficultyAdjustedInverseValue(difficulty, false, baseValue, step, minimum);
-	}
-
-	public static double resolveDifficultyAdjustedInverseValue(
-		Difficulty difficulty,
 		boolean hardcore,
 		double baseValue,
 		double step,
@@ -120,18 +108,6 @@ public final class MobSystemUtil {
 	) {
 		int tier = resolveDifficultyTier(difficulty, hardcore);
 		return Math.max(minimum, baseValue - (step * tier));
-	}
-
-	public static Double resolveDifficultyAdjustedOptionalValue(
-		Double baseValue,
-		Difficulty difficulty,
-		double step,
-		double minimum
-	) {
-		if (baseValue == null) {
-			return null;
-		}
-		return resolveDifficultyAdjustedValue(difficulty, baseValue, step, minimum);
 	}
 
 	public static Double resolveDifficultyAdjustedOptionalValue(
@@ -185,7 +161,7 @@ public final class MobSystemUtil {
 	) {
 		boolean shouldBeBaby = random.nextFloat() < chance;
 		zombie.setBaby(shouldBeBaby);
-		MadokuInfoDebugSystem.info(
+		MadokuCraftMobs.infoDebug(
 			logSource,
 			"Spawn roll difficulty={}, babyChance={}%, result={}",
 			difficulty.name(),

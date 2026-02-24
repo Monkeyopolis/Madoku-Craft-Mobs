@@ -143,10 +143,6 @@ public final class CreeperMobConfig {
 		return charged ? chargedCreeper : creeper;
 	}
 
-	public Double resolveExplosionDestructionChance(Difficulty difficulty, CreeperVariantConfig variant) {
-		return resolveExplosionDestructionChance(difficulty, false, variant);
-	}
-
 	public Double resolveExplosionDestructionChance(
 		Difficulty difficulty,
 		boolean hardcore,
@@ -184,19 +180,19 @@ public final class CreeperMobConfig {
 
 	private static CreeperVariantConfig defaultCreeper() {
 		return new CreeperVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(12.0, 1.0, null, 0.25, 0.1, null),
+			new MobConfigJsonUtil.UniversalMobStats(12.0, 1.0, null, 0.25, 0.1, null, 7),
 			3.0,
 			0.4,
-			1.5
+			32.0
 		);
 	}
 
 	private static CreeperVariantConfig defaultChargedCreeper() {
 		return new CreeperVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(12.0, 1.0, null, 0.3, 0.2, null),
+			new MobConfigJsonUtil.UniversalMobStats(12.0, 1.0, null, 0.3, 0.2, null, 7),
 			5.0,
 			0.6,
-			1.2
+			28.0
 		);
 	}
 

@@ -17,17 +17,10 @@
 	"entrypoints": {
 		"main": [
 			"madoku.craft.mobs.MadokuCraftMobs"
-		],
-		"client": [
-			"madoku.craft.mobs.MadokuCraftMobsClient"
 		]
 	},
 	"mixins": [
-		"madoku-craft-mobs.mixins.json",
-		{
-			"config": "madoku-craft-mobs.client.mixins.json",
-			"environment": "client"
-		}
+		"madoku-craft-mobs.mixins.json"
 	],
 	"depends": {
 		"fabricloader": ">=0.18.4",

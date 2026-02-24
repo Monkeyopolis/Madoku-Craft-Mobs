@@ -2,9 +2,9 @@ package madoku.craft.mobs.system;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
 
-import madoku.craft.API.system.MadokuInfoDebugSystem;
 import madoku.craft.API.system.MadokuTickSystem;
 import madoku.craft.mobs.MadokuCraftMobs;
 import madoku.craft.mobs.mixin.AbstractSkeletonEntityArrowInvoker;
@@ -16,6 +16,7 @@ import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.entity.mob.AbstractSkeletonEntity;
+import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.entity.mob.SpiderEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.item.ItemStack;
@@ -42,6 +43,9 @@ public final class SkeletonMobSystem {
 	private static final double RANGED_DAMAGE_DIFFICULTY_STEP = 1.0;
 	private static final double ATTACK_ACCURACY_DIFFICULTY_STEP = 0.05;
 	private static final double ATTACK_INTERVAL_DIFFICULTY_STEP = 2.0;
+	private static final double CHARGE_UP_TICKS_DIFFICULTY_STEP = 1.0;
+	private static final MadokuTickSystem.TickHandler HOMING_TICK_TASK = SkeletonMobSystem::runQueuedHomingTick;
+	private static final AtomicBoolean HOMING_TICK_ACTIVE = new AtomicBoolean(false);
 
 	private static SkeletonMobConfig activeConfig;
 	private static final Map<UUID, HomingArrowState> HOMING_ARROWS = new ConcurrentHashMap<>();
@@ -54,7 +58,6 @@ public final class SkeletonMobSystem {
 		reloadConfig();
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> reloadConfig());
-		MadokuTickSystem.register(MadokuTickSystem.Phase.START, SkeletonMobSystem::tickTrackedProjectiles);
 
 		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
 			if (!(entity instanceof LivingEntity livingEntity)) {
@@ -81,8 +84,9 @@ public final class SkeletonMobSystem {
 		activeConfig = SkeletonMobConfig.load();
 		HOMING_ARROWS.clear();
 		FIXED_DAMAGE_ARROWS.clear();
+		HOMING_TICK_ACTIVE.set(false);
 		if (activeConfig.anyEnabled()) {
-			MadokuInfoDebugSystem.info(
+			MadokuCraftMobs.infoDebug(
 				LOG_SOURCE,
 				"Config loaded. skeleton(enabled={}, health={}, damage={}, bowWeights={}/{}, jockeyWeights={}/{}), stray(enabled={}, health={}, damage={}, bowWeights={}/{}, jockeyWeights={}/{}), bogged(enabled={}, health={}, damage={}, bowWeights={}/{}, jockeyWeights={}/{}), parched(enabled={}, health={}, damage={}, bowWeights={}/{}, jockeyWeights={}/{}).",
 				activeConfig.skeleton().enabled(),
@@ -115,7 +119,7 @@ public final class SkeletonMobSystem {
 				activeConfig.parched().regularSpawnWeight()
 			);
 		} else {
-			MadokuInfoDebugSystem.info(LOG_SOURCE, "Skeleton system disabled in config.");
+			MadokuCraftMobs.infoDebug(LOG_SOURCE, "Skeleton system disabled in config.");
 		}
 	}
 
@@ -236,7 +240,7 @@ public final class SkeletonMobSystem {
 		boolean hasBow = skeleton.getMainHandStack().isOf(Items.BOW) || skeleton.getOffHandStack().isOf(Items.BOW);
 		boolean spiderJockey = spawnReason == SpawnReason.JOCKEY
 			|| (skeleton.hasVehicle() && skeleton.getVehicle() instanceof SpiderEntity);
-		MadokuInfoDebugSystem.info(
+		MadokuCraftMobs.infoDebug(
 			LOG_SOURCE,
 			"Spawn result type={}, reason={}, difficulty={}, hardcore={}, bow={}, mount={}, weights(bow={}/{}, jockeyBase={}/{}).",
 			skeleton.getType(),
@@ -293,6 +297,7 @@ public final class SkeletonMobSystem {
 			double speed = Math.max(MIN_HOMING_SPEED, projectile.getVelocity().length());
 			projectile.setNoGravity(true);
 			HOMING_ARROWS.put(projectile.getUuid(), new HomingArrowState(target.getUuid(), speed, HOMING_LIFETIME_TICKS));
+			ensureHomingTickTaskScheduled();
 		} else {
 			HOMING_ARROWS.remove(projectile.getUuid());
 		}
@@ -322,6 +327,30 @@ public final class SkeletonMobSystem {
 			1.0
 		);
 		return Math.max(1, (int) Math.round(interval));
+	}
+
+	public static int resolveChargeUpTicks(HostileEntity attacker) {
+		if (!(attacker instanceof AbstractSkeletonEntity skeleton)) {
+			return -1;
+		}
+
+		SkeletonMobConfig config = activeConfig;
+		if (config == null) {
+			return -1;
+		}
+		SkeletonMobConfig.SkeletonTypeConfig variant = config.resolveVariant(skeleton.getType());
+		if (variant == null || !variant.enabled()) {
+			return -1;
+		}
+
+		double chargeUpTicks = MobSystemUtil.resolveDifficultyAdjustedInverseValue(
+			skeleton.getEntityWorld().getDifficulty(),
+			MobSystemUtil.isHardcoreWorld(skeleton.getEntityWorld()),
+			variant.chargeUpTicks(),
+			CHARGE_UP_TICKS_DIFFICULTY_STEP,
+			1.0
+		);
+		return Math.max(1, (int) Math.round(chargeUpTicks));
 	}
 
 	private static double resolveScaledRangedDamage(double baseDamage, Difficulty difficulty, boolean hardcore) {
@@ -363,6 +392,27 @@ public final class SkeletonMobSystem {
 			return;
 		}
 		tickHomingProjectiles(server);
+	}
+
+	private static void runQueuedHomingTick(MinecraftServer server) {
+		tickTrackedProjectiles(server);
+		if (HOMING_ARROWS.isEmpty()) {
+			HOMING_TICK_ACTIVE.set(false);
+			if (!HOMING_ARROWS.isEmpty()) {
+				ensureHomingTickTaskScheduled();
+			}
+			return;
+		}
+		MadokuTickSystem.enqueue(MadokuTickSystem.Phase.START, HOMING_TICK_TASK);
+	}
+
+	private static void ensureHomingTickTaskScheduled() {
+		if (!HOMING_TICK_ACTIVE.compareAndSet(false, true)) {
+			return;
+		}
+		if (!MadokuTickSystem.enqueue(MadokuTickSystem.Phase.START, HOMING_TICK_TASK)) {
+			HOMING_TICK_ACTIVE.set(false);
+		}
 	}
 
 	public static Float consumeFixedSkeletonArrowDamage(PersistentProjectileEntity projectile) {

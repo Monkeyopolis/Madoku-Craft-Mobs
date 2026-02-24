@@ -101,10 +101,6 @@ public final class ZombieMobConfig {
 		return null;
 	}
 
-	public static double resolveBabySpawnChance(ZombieTypeConfig config, Difficulty difficulty) {
-		return resolveBabySpawnChance(config, difficulty, false);
-	}
-
 	public static double resolveBabySpawnChance(ZombieTypeConfig config, Difficulty difficulty, boolean hardcore) {
 		if (config == null || difficulty == null) {
 			return DEFAULT_VANILLA_BABY_CHANCE;
@@ -192,7 +188,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultZombieAdult() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(24.0, 1.0, 6.0, 0.2, 0.2, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(24.0, 1.0, 6.0, 0.2, 0.2, 1.0, 7),
 			false,
 			false,
 			95.0
@@ -201,7 +197,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultZombieBaby() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(12.0, 1.0, 3.0, 0.3, 0.2, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(12.0, 1.0, 3.0, 0.2, 0.2, 1.0, 7),
 			false,
 			false,
 			5.0
@@ -210,7 +206,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultHuskAdult() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(20.0, 1.0, 5.0, 0.2, 0.2, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(20.0, 1.0, 5.0, 0.2, 0.2, 1.0, 7),
 			false,
 			false,
 			95.0
@@ -219,7 +215,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultHuskBaby() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(10.0, 1.0, 2.5, 0.3, 0.2, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(10.0, 1.0, 2.5, 0.25, 0.2, 1.0, 7),
 			false,
 			false,
 			5.0
@@ -228,7 +224,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultDrownedAdult() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(20.0, 0.0, 5.0, 0.25, 0.0, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(20.0, 0.0, 5.0, 0.25, 0.0, 1.0, 7),
 			false,
 			false,
 			95.0
@@ -237,7 +233,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultDrownedBaby() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(10.0, 0.0, 2.5, 0.25, 0.0, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(10.0, 0.0, 2.5, 0.25, 0.0, 1.0, 7),
 			false,
 			false,
 			5.0
@@ -246,7 +242,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultZombieVillagerAdult() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(20.0, 0.0, 5.0, 0.25, 0.0, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(20.0, 0.0, 5.0, 0.25, 0.0, 1.0, 7),
 			false,
 			false,
 			95.0
@@ -255,7 +251,7 @@ public final class ZombieMobConfig {
 
 	private static ZombieVariantConfig defaultZombieVillagerBaby() {
 		return new ZombieVariantConfig(
-			new MobConfigJsonUtil.UniversalMobStats(10.0, 0.0, 2.5, 0.25, 0.0, 1.0),
+			new MobConfigJsonUtil.UniversalMobStats(10.0, 0.0, 2.5, 0.25, 0.0, 1.0, 7),
 			false,
 			false,
 			5.0

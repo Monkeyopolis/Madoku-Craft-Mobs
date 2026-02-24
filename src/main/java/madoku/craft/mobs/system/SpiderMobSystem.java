@@ -1,11 +1,9 @@
 package madoku.craft.mobs.system;
 
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-import madoku.craft.API.system.MadokuInfoDebugSystem;
+import madoku.craft.API.system.MadokuTickSystem;
 import madoku.craft.mobs.MadokuCraftMobs;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -17,6 +15,7 @@ import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.mob.CaveSpiderEntity;
 import net.minecraft.entity.mob.SkeletonEntity;
 import net.minecraft.entity.mob.SpiderEntity;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.world.Difficulty;
@@ -29,7 +28,6 @@ import net.minecraft.world.ServerWorldAccess;
 public final class SpiderMobSystem {
 	private static final String LOG_SOURCE = "MOBS.Spider";
 	private static SpiderMobConfig activeConfig;
-	private static final Map<UUID, SpawnReason> PENDING_CAVE_REPLACEMENTS = new ConcurrentHashMap<>();
 
 	private SpiderMobSystem() {
 	}
@@ -48,26 +46,17 @@ public final class SpiderMobSystem {
 			}
 			SpiderMobConfig config = activeConfig;
 			if (config != null && config.enabled() && world instanceof ServerWorld serverWorld) {
-				if (spider.getType() == EntityType.SPIDER) {
-					SpawnReason replacementSpawnReason = PENDING_CAVE_REPLACEMENTS.remove(spider.getUuid());
-					if (replacementSpawnReason != null) {
-						replaceLoadedSpiderWithCaveSpider(spider, serverWorld, replacementSpawnReason);
-						return;
-					}
-				}
 				applyConfig(spider, config, serverWorld.getDifficulty());
 			}
 		});
-		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> PENDING_CAVE_REPLACEMENTS.remove(entity.getUuid()));
 
 		MadokuCraftMobs.LOGGER.info("Madoku Craft Mobs: spider system hooks registered.");
 	}
 
 	private static void reloadConfig() {
 		activeConfig = SpiderMobConfig.load();
-		PENDING_CAVE_REPLACEMENTS.clear();
 		if (activeConfig.enabled()) {
-			MadokuInfoDebugSystem.info(
+			MadokuCraftMobs.infoDebug(
 				LOG_SOURCE,
 				"Config loaded. spider(enabled={}, health={}, damage={}, difficultyStep={}), cave(enabled={}, health={}, damage={}, difficultyStep={}), spiderWeights(spider={}, cave={}, jockey={}), specialWeightStep={}.",
 				activeConfig.spiderEnabled(),
@@ -84,7 +73,7 @@ public final class SpiderMobSystem {
 				MobSystemUtil.SPECIAL_SPAWN_WEIGHT_DIFFICULTY_STEP
 			);
 		} else {
-			MadokuInfoDebugSystem.info(LOG_SOURCE, "Spider system disabled in config.");
+			MadokuCraftMobs.infoDebug(LOG_SOURCE, "Spider system disabled in config.");
 		}
 	}
 
@@ -141,7 +130,7 @@ public final class SpiderMobSystem {
 		} else if (outcome == SpawnOutcome.SPIDER_JOCKEY) {
 			spawnSpiderJockey(spider, world, difficulty);
 		}
-		MadokuInfoDebugSystem.info(
+		MadokuCraftMobs.infoDebug(
 			LOG_SOURCE,
 			"Spawn result={}, reason={}, difficulty={}, hardcore={}, weights(spider={}, cave={}, jockey={}).",
 			outcome.name(),
@@ -158,7 +147,35 @@ public final class SpiderMobSystem {
 		if (spider == null || spawnReason == null) {
 			return;
 		}
-		PENDING_CAVE_REPLACEMENTS.put(spider.getUuid(), spawnReason);
+		UUID spiderId = spider.getUuid();
+		MadokuTickSystem.enqueue(
+			MadokuTickSystem.Phase.START,
+			server -> runQueuedCaveSpiderReplacement(server, spiderId, spawnReason)
+		);
+	}
+
+	private static void runQueuedCaveSpiderReplacement(MinecraftServer server, UUID spiderId, SpawnReason spawnReason) {
+		if (server == null || spiderId == null || spawnReason == null) {
+			return;
+		}
+		SpiderEntity spider = findQueuedSpider(server, spiderId);
+		if (spider == null || spider.isRemoved()) {
+			return;
+		}
+		if (!(spider.getEntityWorld() instanceof ServerWorld serverWorld)) {
+			return;
+		}
+		replaceLoadedSpiderWithCaveSpider(spider, serverWorld, spawnReason);
+	}
+
+	private static SpiderEntity findQueuedSpider(MinecraftServer server, UUID spiderId) {
+		for (ServerWorld world : server.getWorlds()) {
+			Entity entity = world.getEntity(spiderId);
+			if (entity instanceof SpiderEntity spider && spider.getType() == EntityType.SPIDER) {
+				return spider;
+			}
+		}
+		return null;
 	}
 
 	private static void replaceLoadedSpiderWithCaveSpider(SpiderEntity spider, ServerWorld serverWorld, SpawnReason spawnReason) {

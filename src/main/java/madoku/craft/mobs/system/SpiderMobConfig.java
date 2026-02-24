@@ -176,11 +176,11 @@ public final class SpiderMobConfig {
 	}
 
 	private static MobConfigJsonUtil.UniversalMobStats defaultSpiderStats() {
-		return new MobConfigJsonUtil.UniversalMobStats(16.0, 0.0, 4.0, 0.3, 0.0, 0.7);
+		return new MobConfigJsonUtil.UniversalMobStats(16.0, 0.0, 4.0, 0.3, 0.0, 0.7, 7);
 	}
 
 	private static MobConfigJsonUtil.UniversalMobStats defaultCaveStats() {
-		return new MobConfigJsonUtil.UniversalMobStats(12.0, 0.0, 3.0, 0.3, 0.0, 0.7);
+		return new MobConfigJsonUtil.UniversalMobStats(12.0, 0.0, 3.0, 0.3, 0.0, 0.7, 7);
 	}
 
 	private record SpiderLoadResult(SpiderTypeConfig typeConfig, SpiderSpawnWeights spawnWeights) {

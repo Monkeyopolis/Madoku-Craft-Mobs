@@ -1,6 +1,5 @@
 package madoku.craft.mobs.system;
 
-import madoku.craft.API.system.MadokuInfoDebugSystem;
 import madoku.craft.mobs.MadokuCraftMobs;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -79,7 +78,7 @@ public final class ZombieMobSystem {
 
 		if (type == EntityType.ZOMBIE && !shouldBeBaby && zombie.hasVehicle() && zombie.getVehicle() instanceof ChickenEntity) {
 			zombie.stopRiding();
-			MadokuInfoDebugSystem.info(LOG_SOURCE_ZOMBIE, "Removed chicken mount because zombie rolled ADULT.");
+			MadokuCraftMobs.infoDebug(LOG_SOURCE_ZOMBIE, "Removed chicken mount because zombie rolled ADULT.");
 		}
 	}
 
@@ -113,7 +112,7 @@ public final class ZombieMobSystem {
 			: null;
 		MobSystemUtil.SpawnWeightPair adjustedWeights = ZombieMobConfig.resolveAdjustedSpawnWeights(typeConfig, difficulty, hardcore);
 		boolean chickenMount = zombie.hasVehicle() && zombie.getVehicle() instanceof ChickenEntity;
-		MadokuInfoDebugSystem.info(
+		MadokuCraftMobs.infoDebug(
 			resolveLogSource(type),
 			"Spawn result={}, reason={}, difficulty={}, hardcore={}, chickenMount={}, customBabyChance={}, babyChance={}%, weights(adult={}, baby={}).",
 			zombie.isBaby() ? "BABY" : "ADULT",
@@ -132,7 +131,7 @@ public final class ZombieMobSystem {
 		activeConfig = ZombieMobConfig.load();
 		if (activeConfig.anyEnabled()) {
 			MadokuCraftMobs.LOGGER.info("Madoku Craft Mobs: zombie-family configs loaded.");
-			MadokuInfoDebugSystem.info(
+			MadokuCraftMobs.infoDebug(
 				LOG_SOURCE_ZOMBIE,
 				"Family loaded. zombie(enabled={}, weights={}/{}), husk(enabled={}, weights={}/{}), drowned(enabled={}, weights={}/{}), zombieVillager(enabled={}, weights={}/{}).",
 				activeConfig.zombie().enabled(),
@@ -150,7 +149,7 @@ public final class ZombieMobSystem {
 			);
 		} else {
 			MadokuCraftMobs.LOGGER.info("Madoku Craft Mobs: zombie-family systems disabled by config.");
-			MadokuInfoDebugSystem.info(LOG_SOURCE_ZOMBIE, "Zombie-family systems disabled in config.");
+			MadokuCraftMobs.infoDebug(LOG_SOURCE_ZOMBIE, "Zombie-family systems disabled in config.");
 		}
 	}
 

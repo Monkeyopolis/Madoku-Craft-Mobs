@@ -1,6 +1,5 @@
 package madoku.craft.mobs.system;
 
-import madoku.craft.API.system.MadokuInfoDebugSystem;
 import madoku.craft.mobs.MadokuCraftMobs;
 import madoku.craft.mobs.mixin.CreeperEntityAccessor;
 import madoku.craft.mobs.mixin.CreeperEntityTrackedDataAccessor;
@@ -24,7 +23,7 @@ import net.minecraft.world.World;
 public final class CreeperMobSystem {
 	private static final String LOG_SOURCE = "MOBS.Creeper";
 	private static final double EXPLOSION_POWER_DIFFICULTY_STEP = 1.0;
-	private static final double FUSE_LENGTH_DIFFICULTY_STEP = 0.1;
+	private static final double FUSE_LENGTH_DIFFICULTY_STEP = 2.0;
 	private static CreeperMobConfig activeConfig;
 
 	private CreeperMobSystem() {
@@ -86,7 +85,7 @@ public final class CreeperMobSystem {
 			: World.ExplosionSourceType.NONE;
 
 		world.createExplosion(creeper, x, y, z, basePower, sourceType);
-		MadokuInfoDebugSystem.info(
+		MadokuCraftMobs.infoDebug(
 			LOG_SOURCE,
 			"Explosion override charged={}, difficulty={}, destroyBlocks={}, chance={}%, power={}, griefPower={}.",
 			creeper.isCharged(),
@@ -164,7 +163,7 @@ public final class CreeperMobSystem {
 		if (chargedSpawn) {
 			creeper.getDataTracker().set(CreeperEntityTrackedDataAccessor.madokuCraftMobs$getChargedTrackedData(), true);
 		}
-		MadokuInfoDebugSystem.info(
+		MadokuCraftMobs.infoDebug(
 			LOG_SOURCE,
 			"Spawn result={}, reason={}, difficulty={}, hardcore={}, weights(creeper={}, charged={}).",
 			chargedSpawn ? "CHARGED_CREEPER" : "CREEPER",
@@ -181,7 +180,7 @@ public final class CreeperMobSystem {
 		if (activeConfig.enabled()) {
 			MobConfigJsonUtil.UniversalMobStats creeperStats = activeConfig.creeper().stats();
 			MobConfigJsonUtil.UniversalMobStats chargedStats = activeConfig.chargedCreeper().stats();
-			MadokuInfoDebugSystem.info(
+			MadokuCraftMobs.infoDebug(
 				LOG_SOURCE,
 				"Config loaded. creeper(health={}, power={}, griefChance={}%), charged(health={}, power={}, griefChance={}%), spawnWeights=({}/{}), griefPower={}%, difficultyStep={}%.",
 				creeperStats.health(),
@@ -196,7 +195,7 @@ public final class CreeperMobSystem {
 				MobSystemUtil.roundToTwoDecimals(activeConfig.explosionDestructionDifficultyStep() * 100.0)
 			);
 		} else {
-			MadokuInfoDebugSystem.info(LOG_SOURCE, "Creeper system disabled in config.");
+			MadokuCraftMobs.infoDebug(LOG_SOURCE, "Creeper system disabled in config.");
 		}
 	}
 
@@ -211,12 +210,12 @@ public final class CreeperMobSystem {
 		CreeperEntityAccessor accessor = (CreeperEntityAccessor) creeper;
 		if (variant.fuseLength() != null) {
 			boolean hardcore = MobSystemUtil.isHardcoreWorld(creeper.getEntityWorld());
-			double scaledFuseLength = resolveScaledFuseLength(
+			double scaledFuseTicks = resolveScaledFuseLength(
 				variant.fuseLength(),
 				creeper.getEntityWorld().getDifficulty(),
 				hardcore
 			);
-			int fuseTicks = resolveFuseTicks(scaledFuseLength);
+			int fuseTicks = Math.max(1, (int) Math.round(scaledFuseTicks));
 			accessor.madokuCraftMobs$setFuseTime(fuseTicks);
 			if (accessor.madokuCraftMobs$getCurrentFuseTime() > fuseTicks) {
 				accessor.madokuCraftMobs$setCurrentFuseTime(fuseTicks);
@@ -251,14 +250,10 @@ public final class CreeperMobSystem {
 		return MobSystemUtil.resolveDifficultyAdjustedInverseValue(
 			difficulty,
 			hardcore,
-			Math.max(0.05, baseFuseLength),
+			Math.max(1.0, baseFuseLength),
 			FUSE_LENGTH_DIFFICULTY_STEP,
-			0.05
+			1.0
 		);
-	}
-
-	private static int resolveFuseTicks(double fuseLengthSeconds) {
-		return Math.max(1, (int) Math.round(fuseLengthSeconds * 20.0));
 	}
 
 	private static boolean shouldSpawnChargedCreeper(Random random, double creeperWeight, double chargedWeight) {

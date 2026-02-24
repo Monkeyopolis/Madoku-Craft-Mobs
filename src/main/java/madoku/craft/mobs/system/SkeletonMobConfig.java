@@ -24,6 +24,7 @@ public final class SkeletonMobConfig {
 	private static final String KEY_RANGED_DAMAGE = "ranged_damage";
 	private static final String KEY_ATTACK_INTERVAL = "attack_interval";
 	private static final String KEY_ATTACK_ACCURACY = "attack_accuracy";
+	private static final String KEY_CHARGE_UP_TICKS = "charge_up_ticks";
 
 	private final SkeletonTypeConfig skeleton;
 	private final SkeletonTypeConfig stray;
@@ -145,6 +146,12 @@ public final class SkeletonMobConfig {
 		);
 		changed |= MobConfigJsonUtil.setDouble(root, KEY_ATTACK_ACCURACY, attackAccuracy);
 
+		double chargeUpTicks = MobConfigJsonUtil.sanitizePositive(
+			MobConfigJsonUtil.readDouble(root, KEY_CHARGE_UP_TICKS, 10.0),
+			10.0
+		);
+		changed |= MobConfigJsonUtil.setDouble(root, KEY_CHARGE_UP_TICKS, chargeUpTicks);
+
 		MobConfigJsonUtil.UniversalMobStatsLoadResult statsResult = MobConfigJsonUtil.readUniversalStatOverrides(root);
 		changed |= statsResult.changed();
 
@@ -161,6 +168,7 @@ public final class SkeletonMobConfig {
 			rangedDamage,
 			attackInterval,
 			attackAccuracy,
+			chargeUpTicks,
 			statsResult.stats()
 		);
 	}
@@ -175,6 +183,7 @@ public final class SkeletonMobConfig {
 		defaults.addProperty(KEY_RANGED_DAMAGE, defaultRangedDamage);
 		defaults.addProperty(KEY_ATTACK_INTERVAL, 20.0);
 		defaults.addProperty(KEY_ATTACK_ACCURACY, 0.7);
+		defaults.addProperty(KEY_CHARGE_UP_TICKS, 10.0);
 
 		JsonObject universalDefaults = MobConfigJsonUtil.buildUniversalStatDefaults(defaultStats);
 		for (Map.Entry<String, JsonElement> entry : universalDefaults.entrySet()) {
@@ -184,11 +193,11 @@ public final class SkeletonMobConfig {
 	}
 
 	private static MobConfigJsonUtil.UniversalMobStats defaultSkeletonStats() {
-		return new MobConfigJsonUtil.UniversalMobStats(16.0, 0.0, 4.0, 0.25, 0.0, 1.0);
+		return new MobConfigJsonUtil.UniversalMobStats(16.0, 0.0, 4.0, 0.25, 0.0, 1.0, 7);
 	}
 
 	private static MobConfigJsonUtil.UniversalMobStats defaultVariantStats() {
-		return new MobConfigJsonUtil.UniversalMobStats(12.0, 0.0, 3.0, 0.25, 0.0, 1.0);
+		return new MobConfigJsonUtil.UniversalMobStats(12.0, 0.0, 3.0, 0.25, 0.0, 1.0, 7);
 	}
 
 	public record SkeletonTypeConfig(
@@ -200,6 +209,7 @@ public final class SkeletonMobConfig {
 		double rangedDamage,
 		double attackInterval,
 		double attackAccuracy,
+		double chargeUpTicks,
 		MobConfigJsonUtil.UniversalMobStats stats
 	) {
 	}
