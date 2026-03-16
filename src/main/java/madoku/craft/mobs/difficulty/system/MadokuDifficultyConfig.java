@@ -350,4 +350,3 @@ public final class MadokuDifficultyConfig {
 			root.addProperty(FIELD_ATTACK_ACCURACY, 1.0d);
 		}
 	}
-

@@ -309,4 +309,3 @@ public final class MadokuMobConfig {
 		return root;
 	}
 }
-

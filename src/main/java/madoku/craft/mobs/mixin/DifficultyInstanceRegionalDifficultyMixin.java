@@ -24,4 +24,3 @@ public abstract class DifficultyInstanceRegionalDifficultyMixin {
 		cir.setReturnValue(difficulty.getId() * 0.75F);
 	}
 }
-

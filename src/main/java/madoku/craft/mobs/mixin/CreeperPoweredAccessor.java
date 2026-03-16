@@ -12,4 +12,3 @@ public interface CreeperPoweredAccessor {
 		throw new AssertionError("Accessor not transformed.");
 	}
 }
-

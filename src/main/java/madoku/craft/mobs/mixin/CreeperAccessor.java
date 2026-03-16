@@ -24,4 +24,3 @@ public interface CreeperAccessor {
 	@Accessor("explosionRadius")
 	void madokuCraft$setExplosionRadius(int value);
 }
-

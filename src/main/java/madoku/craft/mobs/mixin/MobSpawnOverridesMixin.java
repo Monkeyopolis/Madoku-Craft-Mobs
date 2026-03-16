@@ -2,7 +2,7 @@ package madoku.craft.mobs.mixin;
 
 import madoku.craft.mobs.mob.system.MadokuMob;
 import net.minecraft.world.DifficultyInstance;
-import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.level.ServerLevelAccessor;
@@ -17,11 +17,10 @@ public abstract class MobSpawnOverridesMixin {
 	private void madokuCraft$applySpawnOverrides(
 		ServerLevelAccessor world,
 		DifficultyInstance difficulty,
-		EntitySpawnReason spawnReason,
+		MobSpawnType spawnReason,
 		SpawnGroupData spawnGroupData,
 		CallbackInfoReturnable<SpawnGroupData> cir
 	) {
 		MadokuMob.applyMobSpawnOverridesFromGenericMixin((Mob) (Object) this, world, difficulty, spawnReason);
 	}
 }
-

@@ -6,15 +6,14 @@ import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ExplosionDamageCalculator;
-import net.minecraft.world.level.ServerExplosion;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-@Mixin(ServerExplosion.class)
-public abstract class ServerExplosionPlayerDamageMixin {
+@Mixin(Explosion.class)
+public abstract class ExplosionPlayerDamageMixin {
 	@Shadow
 	@Final
 	private Entity source;
@@ -24,22 +23,20 @@ public abstract class ServerExplosionPlayerDamageMixin {
 	private float radius;
 
 	@Redirect(
-		method = "hurtEntities",
+		method = "explode",
 		at = @At(
 			value = "INVOKE",
-			target = "Lnet/minecraft/world/level/ExplosionDamageCalculator;getEntityDamageAmount(Lnet/minecraft/world/level/Explosion;Lnet/minecraft/world/entity/Entity;F)F"
+			target = "Lnet/minecraft/world/level/ExplosionDamageCalculator;getEntityDamageAmount(Lnet/minecraft/world/level/Explosion;Lnet/minecraft/world/entity/Entity;)F"
 		)
 	)
 	private float madokuCraft$applyFixedCreeperPlayerDamage(
 		ExplosionDamageCalculator calculator,
 		Explosion explosion,
-		Entity damagedEntity,
-		float seenPercent
+		Entity damagedEntity
 	) {
 		if (source instanceof Creeper creeper && damagedEntity instanceof Player) {
 			return MadokuMob.resolveFixedPlayerExplosionDamage(creeper, radius);
 		}
-		return calculator.getEntityDamageAmount(explosion, damagedEntity, seenPercent);
+		return calculator.getEntityDamageAmount(explosion, damagedEntity);
 	}
 }
-

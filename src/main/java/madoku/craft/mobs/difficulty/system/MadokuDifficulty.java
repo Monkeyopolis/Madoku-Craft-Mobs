@@ -11,9 +11,7 @@ import madoku.craft.mobs.mob.system.MadokuMob;
 import madoku.craft.scheduler.MadokuScheduler;
 import madoku.craft.time.MadokuTime;
 import net.minecraft.core.Holder;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -117,7 +115,7 @@ public final class MadokuDifficulty {
 		if (!config.enabled()) {
 			return 1;
 		}
-		Identifier biomeId = resolveBiomeId(world, pos);
+		ResourceLocation biomeId = resolveBiomeId(world, pos);
 		int biomeAdjustment = config.biomeAdjustment(biomeId);
 		int timeAdjustment = resolveTimeAdjustment(world, config);
 		StructureContext structureContext = config.structuresEnabled()
@@ -177,7 +175,7 @@ public final class MadokuDifficulty {
 			return;
 		}
 
-		Identifier biomeId = resolveBiomeId(world, mob.blockPosition());
+		ResourceLocation biomeId = resolveBiomeId(world, mob.blockPosition());
 		int biomeAdjustment = config.biomeAdjustment(biomeId);
 		int timeAdjustment = resolveTimeAdjustment(world, config);
 		StructureContext structureContext = config.structuresEnabled()
@@ -424,12 +422,12 @@ public final class MadokuDifficulty {
 				0.0D
 			);
 
-		Map<Identifier, Integer> biomeAdjustments = parseGroupedIdentifierAdjustments(
+		Map<ResourceLocation, Integer> biomeAdjustments = parseGroupedIdentifierAdjustments(
 			biomeRulesByFile,
 			MadokuDifficultyConfig.FIELD_BIOME_LIST,
 			defaultUnknownAdjustment
 		);
-		Map<Identifier, Integer> structureAdjustments = parseGroupedIdentifierAdjustments(
+		Map<ResourceLocation, Integer> structureAdjustments = parseGroupedIdentifierAdjustments(
 			structureRulesByFile,
 			MadokuDifficultyConfig.FIELD_STRUCTURE_LIST,
 			defaultUnknownAdjustment
@@ -451,28 +449,28 @@ public final class MadokuDifficulty {
 		);
 	}
 
-	private static Map<Identifier, Integer> parseGroupedIdentifierAdjustments(
+	private static Map<ResourceLocation, Integer> parseGroupedIdentifierAdjustments(
 		Map<String, JsonObject> rulesByFile,
 		String listField,
 		int defaultUnknownAdjustment
 	) {
-		Map<Identifier, Integer> resolved = new LinkedHashMap<>();
+		Map<ResourceLocation, Integer> resolved = new LinkedHashMap<>();
 		for (JsonObject root : rulesByFile.values()) {
 			if (root == null) {
 				continue;
 			}
 
 			int adjustment = Math.max(0, readInt(root, MadokuDifficultyConfig.FIELD_ADJUSTMENT, defaultUnknownAdjustment));
-			Set<Identifier> ids = parseIdentifierList(root.get(listField));
-			for (Identifier id : ids) {
+			Set<ResourceLocation> ids = parseIdentifierList(root.get(listField));
+			for (ResourceLocation id : ids) {
 				resolved.merge(id, adjustment, Math::max);
 			}
 		}
 		return resolved;
 	}
 
-	private static Set<Identifier> parseIdentifierList(JsonElement source) {
-		Set<Identifier> parsed = new LinkedHashSet<>();
+	private static Set<ResourceLocation> parseIdentifierList(JsonElement source) {
+		Set<ResourceLocation> parsed = new LinkedHashSet<>();
 		if (!(source instanceof JsonArray array)) {
 			return parsed;
 		}
@@ -480,7 +478,7 @@ public final class MadokuDifficulty {
 			if (entry == null || !entry.isJsonPrimitive() || !entry.getAsJsonPrimitive().isString()) {
 				continue;
 			}
-			Identifier identifier = normalizeIdentifier(entry.getAsString());
+			ResourceLocation identifier = normalizeIdentifier(entry.getAsString());
 			if (identifier != null) {
 				parsed.add(identifier);
 			}
@@ -530,7 +528,7 @@ public final class MadokuDifficulty {
 			StatIncrements increments = parseStatIncrementsFromMobScalingRoot(root, fallbackIncrements);
 			resolved.put(fileKey, increments);
 
-			Identifier configuredMobId = normalizeIdentifier(readString(root, MadokuDifficultyConfig.FIELD_MOB_ID, ""));
+			ResourceLocation configuredMobId = normalizeIdentifier(readString(root, MadokuDifficultyConfig.FIELD_MOB_ID, ""));
 			if (configuredMobId != null) {
 				for (String alias : resolveMobScalingFileKeys(configuredMobId)) {
 					if (!alias.isBlank()) {
@@ -581,15 +579,12 @@ public final class MadokuDifficulty {
 		return field != null && field.isJsonArray();
 	}
 
-	private static Identifier resolveBiomeId(ServerLevel world, net.minecraft.core.BlockPos pos) {
+	private static ResourceLocation resolveBiomeId(ServerLevel world, net.minecraft.core.BlockPos pos) {
 		try {
 			Holder<Biome> biomeEntry = world.getBiome(pos);
 			return biomeEntry.unwrapKey()
-				.map(ResourceKey::identifier)
-				.orElseGet(() -> {
-					Registry<Biome> biomeRegistry = world.registryAccess().lookupOrThrow(Registries.BIOME);
-					return biomeRegistry.getKey(biomeEntry.value());
-				});
+				.map(ResourceKey::location)
+				.orElse(null);
 		} catch (RuntimeException exception) {
 			return null;
 		}
@@ -700,21 +695,21 @@ public final class MadokuDifficulty {
 	private static StructureContext resolveStructureContext(
 		ServerLevel world,
 		net.minecraft.core.BlockPos pos,
-		Map<Identifier, Integer> configuredAdjustments,
+		Map<ResourceLocation, Integer> configuredAdjustments,
 		int defaultUnknownAdjustment
 	) {
 		if (world == null || pos == null) {
 			return StructureContext.NONE;
 		}
 
-		if (!configuredAdjustments.isEmpty()) {
-			Predicate<Holder<Structure>> configuredPredicate = entry -> entry.unwrapKey()
-				.map(ResourceKey::identifier)
-				.map(configuredAdjustments::containsKey)
-				.orElse(false);
+			if (!configuredAdjustments.isEmpty()) {
+				Predicate<Holder<Structure>> configuredPredicate = entry -> entry.unwrapKey()
+					.map(ResourceKey::location)
+					.map(configuredAdjustments::containsKey)
+					.orElse(false);
 			StructureStart configuredStart = findStructureContaining(world, pos, configuredPredicate);
 			if (isValidStructureStart(configuredStart)) {
-				Identifier structureId = resolveStructureId(world, configuredStart);
+				ResourceLocation structureId = resolveStructureId(world, configuredStart);
 				return structureContextFromId(structureId, configuredAdjustments, defaultUnknownAdjustment);
 			}
 		}
@@ -724,7 +719,7 @@ public final class MadokuDifficulty {
 			return StructureContext.NONE;
 		}
 
-		Identifier structureId = resolveStructureId(world, start);
+		ResourceLocation structureId = resolveStructureId(world, start);
 		return structureContextFromId(structureId, configuredAdjustments, defaultUnknownAdjustment);
 	}
 
@@ -744,17 +739,13 @@ public final class MadokuDifficulty {
 		return start != null && start != StructureStart.INVALID_START && start.isValid();
 	}
 
-	private static Identifier resolveStructureId(ServerLevel world, StructureStart start) {
-		if (world == null || start == null) {
-			return null;
-		}
-		Registry<Structure> structureRegistry = world.registryAccess().lookupOrThrow(Registries.STRUCTURE);
-		return structureRegistry.getKey(start.getStructure());
+	private static ResourceLocation resolveStructureId(ServerLevel world, StructureStart start) {
+		return null;
 	}
 
 	private static StructureContext structureContextFromId(
-		Identifier structureId,
-		Map<Identifier, Integer> configuredAdjustments,
+		ResourceLocation structureId,
+		Map<ResourceLocation, Integer> configuredAdjustments,
 		int defaultUnknownAdjustment
 	) {
 		if (structureId == null) {
@@ -934,7 +925,7 @@ public final class MadokuDifficulty {
 		return Math.round(value / step) * step;
 	}
 
-	private static Identifier normalizeIdentifier(String rawValue) {
+	private static ResourceLocation normalizeIdentifier(String rawValue) {
 		if (rawValue == null) {
 			return null;
 		}
@@ -945,7 +936,7 @@ public final class MadokuDifficulty {
 		if (!normalized.contains(":")) {
 			normalized = "minecraft:" + normalized;
 		}
-		return Identifier.tryParse(normalized);
+		return ResourceLocation.tryParse(normalized);
 	}
 
 	private static String normalizeFileKey(String rawValue) {
@@ -956,14 +947,14 @@ public final class MadokuDifficulty {
 		if (type == null) {
 			return List.of();
 		}
-		Identifier entityId = EntityType.getKey(type);
+		ResourceLocation entityId = EntityType.getKey(type);
 		if (entityId == null) {
 			return List.of();
 		}
 		return resolveMobScalingFileKeys(entityId);
 	}
 
-	private static List<String> resolveMobScalingFileKeys(Identifier entityId) {
+	private static List<String> resolveMobScalingFileKeys(ResourceLocation entityId) {
 		if (entityId == null) {
 			return List.of();
 		}
@@ -1084,7 +1075,7 @@ public final class MadokuDifficulty {
 
 	private static void emitSpawnScaled(
 		Mob mob,
-		Identifier biomeId,
+		ResourceLocation biomeId,
 		StructureContext structureContext,
 		int baseAdjustment,
 		int biomeAdjustment,
@@ -1150,9 +1141,9 @@ public final class MadokuDifficulty {
 		StatIncrements increments,
 		int defaultUnknownAdjustment,
 		boolean biomesEnabled,
-		Map<Identifier, Integer> biomeAdjustments,
+		Map<ResourceLocation, Integer> biomeAdjustments,
 		boolean structuresEnabled,
-		Map<Identifier, Integer> structureAdjustments,
+		Map<ResourceLocation, Integer> structureAdjustments,
 		boolean timeEnabled,
 		TimeScaling timeScaling,
 		Map<String, StatIncrements> mobScalingIncrements
@@ -1185,7 +1176,7 @@ public final class MadokuDifficulty {
 			return new ResolvedIncrements(increments, "global_fallback");
 		}
 
-		private int biomeAdjustment(Identifier biomeId) {
+		private int biomeAdjustment(ResourceLocation biomeId) {
 			if (!biomesEnabled) {
 				return 0;
 			}
@@ -1263,8 +1254,7 @@ public final class MadokuDifficulty {
 		}
 	}
 
-	private record StructureContext(Identifier structureId, int adjustment) {
+	private record StructureContext(ResourceLocation structureId, int adjustment) {
 		private static final StructureContext NONE = new StructureContext(null, 0);
 	}
 }
-

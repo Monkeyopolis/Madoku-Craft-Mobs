@@ -5,4 +5,3 @@ public interface DifficultyScaledMob {
 
 	void madokuCraft$setSpawnDifficultyAdjustment(int adjustment);
 }
-

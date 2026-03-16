@@ -24,7 +24,7 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -34,20 +34,20 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.monster.illager.Pillager;
-import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
-import net.minecraft.world.entity.monster.spider.CaveSpider;
-import net.minecraft.world.entity.monster.spider.Spider;
-import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.entity.monster.AbstractSkeleton;
+import net.minecraft.world.entity.monster.CaveSpider;
+import net.minecraft.world.entity.monster.Spider;
+import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
-import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.ServerExplosion;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.phys.Vec3;
 
@@ -83,7 +83,7 @@ public final class MadokuMob {
 	private static final Map<UUID, Float> FIXED_ARROW_DAMAGE = new ConcurrentHashMap<>();
 	private static final Map<UUID, Integer> MANAGED_MOB_ARROWS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Integer> PILLAGER_ATTACK_COOLDOWNS = new ConcurrentHashMap<>();
-	private static final Map<UUID, EntitySpawnReason> PENDING_CAVE_SPIDER_REPLACEMENTS = new ConcurrentHashMap<>();
+	private static final Map<UUID, MobSpawnType> PENDING_CAVE_SPIDER_REPLACEMENTS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Entity> TRACKED_ENTITIES = new ConcurrentHashMap<>();
 
 	private static volatile Snapshot snapshot = Snapshot.disabled();
@@ -144,7 +144,7 @@ public final class MadokuMob {
 		Mob mob,
 		ServerLevelAccessor world,
 		DifficultyInstance difficulty,
-		EntitySpawnReason spawnReason
+		MobSpawnType spawnReason
 	) {
 		if (mob instanceof Creeper creeper) {
 			applyCreeperSpawnOverrides(creeper, world, difficulty);
@@ -155,7 +155,7 @@ public final class MadokuMob {
 		Zombie zombie,
 		ServerLevelAccessor world,
 		DifficultyInstance difficulty,
-		EntitySpawnReason spawnReason
+		MobSpawnType spawnReason
 	) {
 		if (zombie == null || world == null || difficulty == null || !snapshot.enabled) {
 			return;
@@ -194,13 +194,13 @@ public final class MadokuMob {
 		Spider spider,
 		ServerLevelAccessor world,
 		DifficultyInstance difficulty,
-		EntitySpawnReason spawnReason
+		MobSpawnType spawnReason
 	) {
 		if (spider == null || world == null || difficulty == null || !snapshot.enabled) {
 			return;
 		}
 		JsonObject root = root(MadokuMobConfig.FILE_SPIDER);
-		if (spider.getType() != EntityType.SPIDER || spawnReason == EntitySpawnReason.JOCKEY || !readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
+		if (spider.getType() != EntityType.SPIDER || spawnReason == MobSpawnType.JOCKEY || !readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return;
 		}
 
@@ -234,7 +234,7 @@ public final class MadokuMob {
 		AbstractSkeleton skeleton,
 		ServerLevelAccessor world,
 		DifficultyInstance difficulty,
-		EntitySpawnReason spawnReason
+		MobSpawnType spawnReason
 	) {
 		if (skeleton == null || world == null || difficulty == null || !snapshot.enabled) {
 			return;
@@ -255,7 +255,7 @@ public final class MadokuMob {
 			}
 		}
 
-		if (spawnReason == EntitySpawnReason.JOCKEY) {
+		if (spawnReason == MobSpawnType.JOCKEY) {
 			ensureBowEquipped(skeleton);
 			return;
 		}
@@ -277,14 +277,14 @@ public final class MadokuMob {
 		}
 
 		ServerLevel level = world.getLevel();
-		Spider spider = EntityType.SPIDER.create(level, EntitySpawnReason.JOCKEY);
+		Spider spider = EntityType.SPIDER.create(level);
 		if (spider == null) {
 			return;
 		}
 		spider.setPos(skeleton.getX(), skeleton.getY(), skeleton.getZ());
 		spider.setYRot(skeleton.getYRot());
 		spider.setXRot(skeleton.getXRot());
-		spider.finalizeSpawn(world, difficulty, EntitySpawnReason.JOCKEY, null);
+		spider.finalizeSpawn(world, difficulty, MobSpawnType.JOCKEY, null);
 		level.tryAddFreshEntityWithPassengers(spider);
 		skeleton.startRiding(spider);
 		ensureBowEquipped(skeleton);
@@ -478,9 +478,9 @@ public final class MadokuMob {
 		return (float) Math.max(0.0D, damage);
 	}
 
-	public static void applyCreeperExplosionOverride(
+	public static Explosion applyCreeperExplosionOverride(
 		Creeper creeper,
-		ServerLevel level,
+		Level level,
 		Entity source,
 		double x,
 		double y,
@@ -488,20 +488,20 @@ public final class MadokuMob {
 		float vanillaPower,
 		Level.ExplosionInteraction vanillaInteraction
 	) {
-		if (level == null || creeper == null || !snapshot.enabled) {
-			level.explode(source, x, y, z, vanillaPower, vanillaInteraction);
-			return;
+		if (level == null) {
+			return null;
+		}
+		if (creeper == null || !snapshot.enabled) {
+			return level.explode(source, x, y, z, vanillaPower, vanillaInteraction);
 		}
 		JsonObject root = root(MadokuMobConfig.FILE_CREEPER);
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
-			level.explode(source, x, y, z, vanillaPower, vanillaInteraction);
-			return;
+			return level.explode(source, x, y, z, vanillaPower, vanillaInteraction);
 		}
 		JsonObject variant = creeper.isPowered() ? readObject(root, MadokuMobConfig.FIELD_CHARGED_CREEPER) : readObject(root, MadokuMobConfig.FIELD_CREEPER);
 		Double baseChance = clampOptional(readOptionalDouble(variant, MadokuMobConfig.FIELD_EXPLOSION_DESTRUCTION_CHANCE), 0.0D, 1.0D);
 		if (baseChance == null) {
-			level.explode(source, x, y, z, vanillaPower, vanillaInteraction);
-			return;
+			return level.explode(source, x, y, z, vanillaPower, vanillaInteraction);
 		}
 		double chance = Mth.clamp(
 			resolveDifficultyAdjustedValue(
@@ -521,10 +521,10 @@ public final class MadokuMob {
 		Level.ExplosionInteraction interaction = level.getRandom().nextDouble() < chance
 			? Level.ExplosionInteraction.MOB
 			: Level.ExplosionInteraction.NONE;
-		level.explode(source, x, y, z, power, interaction);
+		return level.explode(source, x, y, z, power, interaction);
 	}
 
-	public static float resolveCreeperGriefExplosionRadius(ServerExplosion explosion, float fallbackRadius) {
+	public static float resolveCreeperGriefExplosionRadius(Explosion explosion, float fallbackRadius) {
 		if (explosion == null || !(explosion.getDirectSourceEntity() instanceof Creeper) || !snapshot.enabled) {
 			return Math.max(0.0F, fallbackRadius);
 		}
@@ -946,7 +946,7 @@ public final class MadokuMob {
 		if (server == null || PENDING_CAVE_SPIDER_REPLACEMENTS.isEmpty()) {
 			return;
 		}
-		for (Map.Entry<UUID, EntitySpawnReason> entry : PENDING_CAVE_SPIDER_REPLACEMENTS.entrySet()) {
+		for (Map.Entry<UUID, MobSpawnType> entry : PENDING_CAVE_SPIDER_REPLACEMENTS.entrySet()) {
 			Entity entity = findEntity(server, entry.getKey());
 			if (!(entity instanceof Spider spider) || !spider.isAlive() || spider.getType() != EntityType.SPIDER) {
 				PENDING_CAVE_SPIDER_REPLACEMENTS.remove(entry.getKey());
@@ -956,8 +956,8 @@ public final class MadokuMob {
 				PENDING_CAVE_SPIDER_REPLACEMENTS.remove(entry.getKey());
 				continue;
 			}
-			EntitySpawnReason reason = entry.getValue() == null ? EntitySpawnReason.NATURAL : entry.getValue();
-			CaveSpider caveSpider = EntityType.CAVE_SPIDER.create(level, reason);
+			MobSpawnType reason = entry.getValue() == null ? MobSpawnType.NATURAL : entry.getValue();
+			CaveSpider caveSpider = EntityType.CAVE_SPIDER.create(level);
 			if (caveSpider == null) {
 				PENDING_CAVE_SPIDER_REPLACEMENTS.remove(entry.getKey());
 				continue;
@@ -1018,14 +1018,14 @@ public final class MadokuMob {
 
 	private static void spawnSpiderJockey(Spider spider, ServerLevelAccessor world, DifficultyInstance difficulty) {
 		ServerLevel level = world.getLevel();
-		AbstractSkeleton skeleton = EntityType.SKELETON.create(level, EntitySpawnReason.JOCKEY);
+		AbstractSkeleton skeleton = EntityType.SKELETON.create(level);
 		if (skeleton == null) {
 			return;
 		}
 		skeleton.setPos(spider.getX(), spider.getY(), spider.getZ());
 		skeleton.setYRot(spider.getYRot());
 		skeleton.setXRot(0.0F);
-		skeleton.finalizeSpawn(world, difficulty, EntitySpawnReason.JOCKEY, null);
+		skeleton.finalizeSpawn(world, difficulty, MobSpawnType.JOCKEY, null);
 		ensureBowEquipped(skeleton);
 		skeleton.startRiding(spider);
 	}
@@ -1299,9 +1299,6 @@ public final class MadokuMob {
 		if (type == EntityType.BOGGED) {
 			return root(MadokuMobConfig.FILE_BOGGED);
 		}
-		if (type == EntityType.PARCHED) {
-			return root(MadokuMobConfig.FILE_PARCHED);
-		}
 		return new JsonObject();
 	}
 
@@ -1465,4 +1462,3 @@ public final class MadokuMob {
 		}
 	}
 }
-

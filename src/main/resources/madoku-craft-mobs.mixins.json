@@ -19,8 +19,8 @@
 		"RangedBowAttackGoalChargeUpMixin",
 		"RangedCrossbowAttackGoalAccessor",
 		"RangedCrossbowAttackGoalMixin",
-		"ServerExplosionBlockRadiusMixin",
-		"ServerExplosionPlayerDamageMixin",
+		"ExplosionBlockRadiusMixin",
+		"ExplosionPlayerDamageMixin",
 		"SkeletonSpawnOverridesMixin",
 		"SpiderSpawnOverridesMixin",
 		"ZombieSpawnOverridesMixin"

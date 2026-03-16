@@ -1,9 +1,9 @@
 package madoku.craft.mobs.mixin;
 
 import madoku.craft.mobs.mob.system.MadokuMob;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -15,11 +15,11 @@ public abstract class CreeperExplosionMixin {
 		method = "explodeCreeper",
 		at = @At(
 			value = "INVOKE",
-			target = "Lnet/minecraft/server/level/ServerLevel;explode(Lnet/minecraft/world/entity/Entity;DDDFLnet/minecraft/world/level/Level$ExplosionInteraction;)V"
+			target = "Lnet/minecraft/world/level/Level;explode(Lnet/minecraft/world/entity/Entity;DDDFLnet/minecraft/world/level/Level$ExplosionInteraction;)Lnet/minecraft/world/level/Explosion;"
 		)
 	)
-	private void madokuCraft$applyExplosionOverride(
-		ServerLevel level,
+	private Explosion madokuCraft$applyExplosionOverride(
+		Level level,
 		Entity source,
 		double x,
 		double y,
@@ -27,7 +27,6 @@ public abstract class CreeperExplosionMixin {
 		float power,
 		Level.ExplosionInteraction interaction
 	) {
-		MadokuMob.applyCreeperExplosionOverride((Creeper) (Object) this, level, source, x, y, z, power, interaction);
+		return MadokuMob.applyCreeperExplosionOverride((Creeper) (Object) this, level, source, x, y, z, power, interaction);
 	}
 }
-
