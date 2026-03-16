@@ -9,7 +9,7 @@
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"sources": "https://github.com/Monkeyopolis/Madoku-Craft-Mobs"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/madoku-craft-mobs/icon.png",
@@ -30,3 +30,4 @@
 		"madoku-craft-api": ">=${madoku_craft_api_mod_version}"
 	}
 }
+

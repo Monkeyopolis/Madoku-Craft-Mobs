@@ -3,30 +3,29 @@
 	"package": "madoku.craft.mobs.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"AbstractSkeletonEntityArrowInvoker",
-		"AbstractSkeletonEntityRangedMixin",
-		"BowAttackGoalChargeUpMixin",
-		"CreeperEntityAccessor",
-		"CreeperEntityExplosionMixin",
-		"CreeperEntitySpawnMixin",
-		"CreeperEntityTrackedDataAccessor",
-		"CrossbowAttackGoalAccessor",
-		"CrossbowAttackGoalCooldownMixin",
-		"CrossbowItemPullTimeMixin",
-		"CrossbowItemShootVelocityMixin",
-		"ExplosionImplBlockPowerMixin",
-		"ExplosionImplDamageMixin",
-		"MobEntityExperienceAccessor",
-		"PillagerEntityRangedMixin",
-		"PersistentProjectileEntityDamageMixin",
-		"SkeletonEntitySpawnMixin",
-		"SpiderEntitySpawnMixin",
-		"ZombieEntitySpawnMixin"
+		"AbstractArrowDamageMixin",
+		"AbstractSkeletonArrowInvoker",
+		"AbstractSkeletonRangedAttackMixin",
+		"CreeperAccessor",
+		"CreeperExplosionMixin",
+		"CreeperPoweredAccessor",
+		"CrossbowChargeDurationMixin",
+		"CrossbowProjectileAccuracyMixin",
+		"DifficultyInstanceRegionalDifficultyMixin",
+		"MobDifficultySpawnMixin",
+		"MobExperienceAccessor",
+		"MobSpawnOverridesMixin",
+		"PillagerRangedAttackMixin",
+		"RangedBowAttackGoalChargeUpMixin",
+		"RangedCrossbowAttackGoalAccessor",
+		"RangedCrossbowAttackGoalMixin",
+		"ServerExplosionBlockRadiusMixin",
+		"ServerExplosionPlayerDamageMixin",
+		"SkeletonSpawnOverridesMixin",
+		"SpiderSpawnOverridesMixin",
+		"ZombieSpawnOverridesMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
-	},
-	"overwrites": {
-		"requireAnnotations": true
 	}
 }
