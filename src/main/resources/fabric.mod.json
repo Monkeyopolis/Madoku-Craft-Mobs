@@ -3,12 +3,11 @@
 	"id": "madoku-craft-mobs",
 	"version": "${version}",
 	"name": "madoku craft mobs",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "A configurable Mob overhaul system!",
 	"authors": [
-		"Me!"
+		"Monkeyopolis"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/Monkeyopolis/Madoku-Craft-Mobs"
 	},
 	"license": "CC0-1.0",
@@ -23,9 +22,9 @@
 		"madoku-craft-mobs.mixins.json"
 	],
 	"depends": {
-		"fabricloader": ">=0.18.4",
-		"minecraft": "~1.21.11",
-		"java": ">=21",
+		"fabricloader": ">=0.18.5",
+		"minecraft": "~${minecraft_version}",
+		"java": ">=25",
 		"fabric-api": "*",
 		"madoku-craft-api": ">=${madoku_craft_api_mod_version}"
 	}
