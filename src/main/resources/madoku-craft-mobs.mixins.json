@@ -23,6 +23,7 @@
 		"ServerExplosionPlayerDamageMixin",
 		"SkeletonSpawnOverridesMixin",
 		"SpiderSpawnOverridesMixin",
+		"WitherSkeletonWitherEffectMixin",
 		"ZombieSpawnOverridesMixin"
 	],
 	"injectors": {
