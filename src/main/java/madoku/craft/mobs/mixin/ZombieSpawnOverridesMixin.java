@@ -24,3 +24,4 @@ public abstract class ZombieSpawnOverridesMixin {
 		MadokuMob.applyZombieSpawnOverrides((Zombie) (Object) this, world, difficulty, spawnReason);
 	}
 }
+

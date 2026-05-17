@@ -11,3 +11,4 @@ public interface AbstractSkeletonArrowInvoker {
 	@Invoker("getArrow")
 	AbstractArrow madokuCraft$invokeGetArrow(ItemStack ammo, float velocity, ItemStack shotFrom);
 }
+

@@ -24,3 +24,4 @@ public abstract class SkeletonSpawnOverridesMixin {
 		MadokuMob.applySkeletonSpawnOverrides((AbstractSkeleton) (Object) this, world, difficulty, spawnReason);
 	}
 }
+

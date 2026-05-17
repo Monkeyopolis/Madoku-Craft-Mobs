@@ -31,3 +31,4 @@ public abstract class RangedBowAttackGoalChargeUpMixin {
 		return (int) Math.floor((vanillaTicks * 20.0D) / chargeUpTicks);
 	}
 }
+

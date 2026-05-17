@@ -24,3 +24,4 @@ public abstract class SpiderSpawnOverridesMixin {
 		MadokuMob.applySpiderSpawnOverrides((Spider) (Object) this, world, difficulty, spawnReason);
 	}
 }
+

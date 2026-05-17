@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 @Mixin(Explosion.class)
-public abstract class ExplosionBlockRadiusMixin {
+public abstract class ServerExplosionBlockRadiusMixin {
 	@Shadow
 	@Final
 	private float radius;
@@ -26,3 +26,4 @@ public abstract class ExplosionBlockRadiusMixin {
 		return MadokuMob.resolveCreeperGriefExplosionRadius((Explosion) (Object) this, radius);
 	}
 }
+

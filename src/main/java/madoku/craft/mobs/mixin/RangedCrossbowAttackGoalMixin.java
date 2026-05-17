@@ -57,3 +57,4 @@ public abstract class RangedCrossbowAttackGoalMixin {
 		MadokuMob.markPillagerAttackCooldownFromShot(mob);
 	}
 }
+

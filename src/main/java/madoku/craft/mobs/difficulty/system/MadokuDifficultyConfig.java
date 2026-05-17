@@ -152,17 +152,21 @@ public final class MadokuDifficultyConfig {
 		defaults.put("stray", buildMobScalingDefaults("minecraft:stray", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("bogged", buildMobScalingDefaults("minecraft:bogged", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("parched", buildMobScalingDefaults("minecraft:parched", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
+		defaults.put("wither-skeleton", buildMobScalingDefaults("minecraft:wither_skeleton", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("spider", buildMobScalingDefaults("minecraft:spider", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, 1.0d));
 		defaults.put("cave-spider", buildMobScalingDefaults("minecraft:cave_spider", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, 1.0d));
 		defaults.put("zombie", buildMobScalingDefaults("minecraft:zombie", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("husk", buildMobScalingDefaults("minecraft:husk", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("drowned", buildMobScalingDefaults("minecraft:drowned", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("zombie-villager", buildMobScalingDefaults("minecraft:zombie_villager", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
+		defaults.put("piglin", buildMobScalingDefaults("minecraft:piglin", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		defaults.put("pillager", buildMobScalingDefaults("minecraft:pillager", health, movementSpeed, armor, damage, knockbackResistance, experienceDrop, null));
 		addRangedScalingDefaults(defaults.get("skeleton"));
 		addRangedScalingDefaults(defaults.get("stray"));
 		addRangedScalingDefaults(defaults.get("bogged"));
 		addRangedScalingDefaults(defaults.get("parched"));
+		addRangedScalingDefaults(defaults.get("wither-skeleton"));
+		addRangedScalingDefaults(defaults.get("piglin"));
 		addRangedScalingDefaults(defaults.get("pillager"));
 		return defaults;
 	}
@@ -186,6 +190,8 @@ public final class MadokuDifficultyConfig {
 					|| "minecraft:stray".equals(mobId)
 					|| "minecraft:bogged".equals(mobId)
 					|| "minecraft:parched".equals(mobId)
+					|| "minecraft:wither_skeleton".equals(mobId)
+					|| "minecraft:piglin".equals(mobId)
 					|| "minecraft:pillager".equals(mobId)) {
 					JsonObject defaults = buildMobScalingDefaults(mobId);
 					addRangedScalingDefaults(defaults);
@@ -350,3 +356,4 @@ public final class MadokuDifficultyConfig {
 			root.addProperty(FIELD_ATTACK_ACCURACY, 1.0d);
 		}
 	}
+

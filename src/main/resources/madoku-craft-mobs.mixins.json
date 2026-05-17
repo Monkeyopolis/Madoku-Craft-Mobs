@@ -19,10 +19,11 @@
 		"RangedBowAttackGoalChargeUpMixin",
 		"RangedCrossbowAttackGoalAccessor",
 		"RangedCrossbowAttackGoalMixin",
-		"ExplosionBlockRadiusMixin",
-		"ExplosionPlayerDamageMixin",
+		"ServerExplosionBlockRadiusMixin",
+		"ServerExplosionPlayerDamageMixin",
 		"SkeletonSpawnOverridesMixin",
 		"SpiderSpawnOverridesMixin",
+		"WitherSkeletonWitherEffectMixin",
 		"ZombieSpawnOverridesMixin"
 	],
 	"injectors": {

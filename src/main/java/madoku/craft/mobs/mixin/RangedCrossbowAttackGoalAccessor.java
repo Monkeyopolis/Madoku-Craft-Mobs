@@ -9,3 +9,4 @@ public interface RangedCrossbowAttackGoalAccessor {
 	@Accessor("attackDelay")
 	void madokuCraft$setAttackDelay(int value);
 }
+

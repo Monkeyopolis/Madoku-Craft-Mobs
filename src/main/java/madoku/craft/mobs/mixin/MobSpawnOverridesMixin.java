@@ -24,3 +24,4 @@ public abstract class MobSpawnOverridesMixin {
 		MadokuMob.applyMobSpawnOverridesFromGenericMixin((Mob) (Object) this, world, difficulty, spawnReason);
 	}
 }
+

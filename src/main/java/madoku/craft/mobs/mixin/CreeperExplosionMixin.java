@@ -30,3 +30,4 @@ public abstract class CreeperExplosionMixin {
 		return MadokuMob.applyCreeperExplosionOverride((Creeper) (Object) this, level, source, x, y, z, power, interaction);
 	}
 }
+

@@ -15,6 +15,7 @@ import madoku.craft.scheduler.MadokuScheduler;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -23,6 +24,8 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.EntityType;
@@ -35,6 +38,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.AbstractSkeleton;
 import net.minecraft.world.entity.monster.CaveSpider;
 import net.minecraft.world.entity.monster.Spider;
@@ -46,6 +50,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ServerLevelAccessor;
@@ -78,6 +83,8 @@ public final class MadokuMob {
 	private static final double MIN_HOMING_SPEED = 0.75D;
 	private static final int HOMING_LIFETIME_TICKS = 60;
 	private static final int MOB_ARROW_LIFETIME_TICKS = 15 * 20;
+	private static final int WITHER_EFFECT_DURATION_TICKS = 5 * 20;
+	private static final String HOMING_PROJECTILE_TAG = "madoku-craft.projectile.homing";
 
 	private static final Map<UUID, HomingArrowState> HOMING_ARROWS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Float> FIXED_ARROW_DAMAGE = new ConcurrentHashMap<>();
@@ -99,8 +106,8 @@ public final class MadokuMob {
 		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
 			TRACKED_ENTITIES.put(entity.getUUID(), entity);
 			if (entity instanceof LivingEntity livingEntity) {
-				applyLoadedEntityRules(livingEntity);
-				applyDifficultyScalingAfterMobOverrides(livingEntity, world);
+				boolean loadedMobOverridesApplied = applyLoadedEntityRules(livingEntity);
+				applyDifficultyScalingAfterMobOverrides(livingEntity, world, loadedMobOverridesApplied);
 			}
 		});
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
@@ -118,6 +125,8 @@ public final class MadokuMob {
 		PILLAGER_ATTACK_COOLDOWNS.clear();
 		PENDING_CAVE_SPIDER_REPLACEMENTS.clear();
 		TRACKED_ENTITIES.clear();
+		runtimeSchedulerId = MadokuScheduler.createOrGetScheduler(MadokuScheduler.SchedulerOwner.global(MOB_SCHEDULER_OWNER_ID));
+		MadokuScheduler.clearQueuedRequests(runtimeSchedulerId);
 		requestRuntimeProcessing(server, 1L);
 	}
 
@@ -148,6 +157,8 @@ public final class MadokuMob {
 	) {
 		if (mob instanceof Creeper creeper) {
 			applyCreeperSpawnOverrides(creeper, world, difficulty);
+		} else if (mob instanceof Piglin piglin) {
+			applyPiglinSpawnOverrides(piglin, world);
 		}
 	}
 
@@ -184,6 +195,7 @@ public final class MadokuMob {
 
 		clearMobEquipment(zombie);
 		disableZombieReinforcements(zombie);
+		applySpawnArmorLoadout(zombie, root, world.getRandom());
 		JsonObject variant = zombie.isBaby() ? zombieBabyRoot(zombie.getType(), root) : zombieAdultRoot(zombie.getType(), root);
 		applyUniversalStats(zombie, variant);
 		zombie.setCanBreakDoors(readBoolean(variant, MadokuMobConfig.FIELD_CAN_BREAK_DOORS, false));
@@ -239,6 +251,10 @@ public final class MadokuMob {
 		if (skeleton == null || world == null || difficulty == null || !snapshot.enabled) {
 			return;
 		}
+		if (skeleton.getType() == EntityType.WITHER_SKELETON) {
+			applyWitherSkeletonSpawnOverrides(skeleton, world);
+			return;
+		}
 		JsonObject root = skeletonRoot(skeleton.getType());
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return;
@@ -257,6 +273,7 @@ public final class MadokuMob {
 
 		if (spawnReason == MobSpawnType.JOCKEY) {
 			ensureBowEquipped(skeleton);
+			applySpawnArmorLoadout(skeleton, root, world.getRandom());
 			return;
 		}
 
@@ -268,17 +285,20 @@ public final class MadokuMob {
 			SPECIAL_SPAWN_WEIGHT_DIFFICULTY_STEP
 		);
 		if (jockeyWeights.regularWeight + jockeyWeights.specialWeight <= 0.0D || skeleton.getVehicle() != null) {
+			applySpawnArmorLoadout(skeleton, root, world.getRandom());
 			return;
 		}
 		boolean spawnJockey = (world.getRandom().nextDouble() * (jockeyWeights.regularWeight + jockeyWeights.specialWeight))
 			< jockeyWeights.specialWeight;
 		if (!spawnJockey) {
+			applySpawnArmorLoadout(skeleton, root, world.getRandom());
 			return;
 		}
 
 		ServerLevel level = world.getLevel();
 		Spider spider = EntityType.SPIDER.create(level);
 		if (spider == null) {
+			applySpawnArmorLoadout(skeleton, root, world.getRandom());
 			return;
 		}
 		spider.setPos(skeleton.getX(), skeleton.getY(), skeleton.getZ());
@@ -288,6 +308,7 @@ public final class MadokuMob {
 		level.tryAddFreshEntityWithPassengers(spider);
 		skeleton.startRiding(spider);
 		ensureBowEquipped(skeleton);
+		applySpawnArmorLoadout(skeleton, root, world.getRandom());
 	}
 
 	public static boolean applyCustomSkeletonRangedAttack(AbstractSkeleton skeleton, LivingEntity target, float pullProgress) {
@@ -318,11 +339,15 @@ public final class MadokuMob {
 		ShotVector shot = resolveShotVector(skeleton, arrow, target, accuracy);
 		arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
 		arrow.setCritArrow(false);
+		if (skeleton.getType() == EntityType.WITHER_SKELETON) {
+			arrow.setRemainingFireTicks(0);
+		}
 		FIXED_ARROW_DAMAGE.put(arrow.getUUID(), (float) Math.max(0.0D, rangedDamage));
 		trackManagedMobArrow(arrow, resolveServer(skeleton));
 		if (shot.guaranteedHit) {
 			double speed = Math.max(MIN_HOMING_SPEED, arrow.getDeltaMovement().length());
 			arrow.setNoGravity(true);
+			arrow.addTag(HOMING_PROJECTILE_TAG);
 			HOMING_ARROWS.put(arrow.getUUID(), new HomingArrowState(target.getUUID(), speed, HOMING_LIFETIME_TICKS));
 			requestRuntimeProcessing(resolveServer(skeleton), 1L);
 		}
@@ -371,46 +396,80 @@ public final class MadokuMob {
 		float spread = 14.0F - (pillager.level().getDifficulty().getId() * 4.0F);
 		crossbowItem.performShooting(pillager.level(), pillager, hand, stack, speed, spread, target);
 		pillager.onCrossbowAttackPerformed();
-		markPillagerAttackCooldown(pillager);
+		markCrossbowAttackCooldown(pillager);
 		return true;
 	}
 
+	public static void applyWitherSkeletonArrowHitEffect(LivingEntity target, Entity attacker) {
+		if (target == null || attacker == null || target.level().isClientSide() || !snapshot.enabled) {
+			return;
+		}
+		if (!(attacker instanceof AbstractSkeleton skeleton) || skeleton.getType() != EntityType.WITHER_SKELETON) {
+			return;
+		}
+		JsonObject root = skeletonRoot(skeleton.getType());
+		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
+			return;
+		}
+		target.addEffect(new MobEffectInstance(MobEffects.WITHER, WITHER_EFFECT_DURATION_TICKS), skeleton);
+	}
+
+	private static void applyPiglinSpawnOverrides(Piglin piglin, ServerLevelAccessor world) {
+		if (piglin == null || world == null || !snapshot.enabled) {
+			return;
+		}
+		JsonObject root = root(MadokuMobConfig.FILE_PIGLIN);
+		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
+			return;
+		}
+		boolean baby = rollPiglinBabySpawn(root, world);
+		piglin.setBaby(baby);
+		clearMobEquipment(piglin);
+		applySpawnArmorLoadout(piglin, root, world.getRandom());
+		if (!baby) {
+			equipPiglinWeapon(piglin, piglinAdultRoot(root), world.getRandom());
+			normalizePiglinWeapon(piglin);
+		}
+		applyUniversalStats(piglin, piglinVariantRoot(root, baby));
+	}
+
 	public static boolean tickPillagerAttackCooldown(Monster attacker) {
-		if (!(attacker instanceof Pillager pillager) || !snapshot.enabled) {
+		String fileKey = resolveCrossbowShooterFileKey(attacker);
+		if (fileKey == null || !snapshot.enabled) {
 			return false;
 		}
-		JsonObject root = root(MadokuMobConfig.FILE_PILLAGER);
+		JsonObject root = root(fileKey);
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return false;
 		}
-		Integer remaining = PILLAGER_ATTACK_COOLDOWNS.get(pillager.getUUID());
+		Integer remaining = PILLAGER_ATTACK_COOLDOWNS.get(attacker.getUUID());
 		if (remaining == null || remaining <= 0) {
-			PILLAGER_ATTACK_COOLDOWNS.remove(pillager.getUUID());
+			PILLAGER_ATTACK_COOLDOWNS.remove(attacker.getUUID());
 			return false;
 		}
 		if (remaining == 1) {
-			PILLAGER_ATTACK_COOLDOWNS.remove(pillager.getUUID());
+			PILLAGER_ATTACK_COOLDOWNS.remove(attacker.getUUID());
 			return false;
 		}
-		PILLAGER_ATTACK_COOLDOWNS.put(pillager.getUUID(), remaining - 1);
+		PILLAGER_ATTACK_COOLDOWNS.put(attacker.getUUID(), remaining - 1);
 		return true;
 	}
 
 	public static void markPillagerAttackCooldownFromShot(Monster attacker) {
-		if (attacker instanceof Pillager pillager) {
-			markPillagerAttackCooldown(pillager);
+		if (attacker != null) {
+			markCrossbowAttackCooldown(attacker);
 		}
 	}
 
 	public static int resolveCrossbowPostChargeDelay(Monster attacker, int vanillaDelay) {
-		if (!(attacker instanceof Pillager)) {
+		if (resolveCrossbowShooterFileKey(attacker) == null) {
 			return vanillaDelay;
 		}
-		return resolvePillagerChargeUpTicks(attacker) > 0 ? 1 : vanillaDelay;
+		return resolveCrossbowChargeUpTicks(attacker) > 0 ? 1 : vanillaDelay;
 	}
 
 	public static int resolveCrossbowChargeDurationOverride(LivingEntity user) {
-		return user instanceof Monster monster ? resolvePillagerChargeUpTicks(monster) : -1;
+		return user instanceof Monster monster ? resolveCrossbowChargeUpTicks(monster) : -1;
 	}
 
 	public static boolean applyPillagerProjectileAccuracyOverride(
@@ -423,30 +482,38 @@ public final class MadokuMob {
 		float speed,
 		float divergence
 	) {
-		if (!(shooter instanceof Pillager pillager) || target == null || !target.isAlive() || !snapshot.enabled) {
+		String fileKey = resolveCrossbowShooterFileKey(shooter);
+		if (fileKey == null || target == null || !target.isAlive() || !snapshot.enabled) {
 			return false;
 		}
-		JsonObject root = root(MadokuMobConfig.FILE_PILLAGER);
+		JsonObject root = root(fileKey);
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return false;
 		}
-		double accuracy = resolveScaledAttackAccuracy(readDouble(root, MadokuMobConfig.FIELD_ATTACK_ACCURACY, 0.7D), pillager.level().getDifficulty(), isHardcoreWorld(pillager.level()));
-		accuracy = MadokuDifficulty.resolveMobAttackAccuracyScaling(pillager, accuracy);
-		if (pillager.getRandom().nextDouble() <= accuracy) {
+		double accuracy = resolveScaledAttackAccuracy(readDouble(root, MadokuMobConfig.FIELD_ATTACK_ACCURACY, 0.7D), shooter.level().getDifficulty(), isHardcoreWorld(shooter.level()));
+		accuracy = shooter instanceof Mob mob ? MadokuDifficulty.resolveMobAttackAccuracyScaling(mob, accuracy) : accuracy;
+		if (shooter.getRandom().nextDouble() <= accuracy) {
 			projectile.shoot(velocityX, velocityY, velocityZ, speed, 0.0F);
 			if (projectile instanceof AbstractArrow arrow) {
-				trackManagedMobArrow(arrow, resolveServer(pillager));
+				trackManagedMobArrow(arrow, resolveServer(shooter));
 				double homingSpeed = Math.max(MIN_HOMING_SPEED, arrow.getDeltaMovement().length());
 				arrow.setNoGravity(true);
+				arrow.addTag(HOMING_PROJECTILE_TAG);
 				HOMING_ARROWS.put(arrow.getUUID(), new HomingArrowState(target.getUUID(), homingSpeed, HOMING_LIFETIME_TICKS));
-				requestRuntimeProcessing(resolveServer(pillager), 1L);
+				requestRuntimeProcessing(resolveServer(shooter), 1L);
+				if (shooter instanceof Piglin) {
+					arrow.setRemainingFireTicks(100);
+				}
 			}
 			return true;
 		}
 		Vec3 missed = resolveMissVector(velocityX, velocityY, velocityZ, accuracy, shooter);
 		projectile.shoot(missed.x, missed.y, missed.z, speed, 0.0F);
 		if (projectile instanceof AbstractArrow arrow) {
-			trackManagedMobArrow(arrow, resolveServer(pillager));
+			trackManagedMobArrow(arrow, resolveServer(shooter));
+			if (shooter instanceof Piglin) {
+				arrow.setRemainingFireTicks(100);
+			}
 			HOMING_ARROWS.remove(arrow.getUUID());
 		}
 		return true;
@@ -466,16 +533,24 @@ public final class MadokuMob {
 				return (float) Math.max(0.0D, resolveSkeletonRangedDamage(skeleton, root));
 			}
 		}
-		if (!(arrow.getOwner() instanceof Pillager pillager) || !snapshot.enabled) {
+		if (!(arrow.getOwner() instanceof LivingEntity owner) || !snapshot.enabled) {
 			return fallbackDamage;
 		}
-		JsonObject root = root(MadokuMobConfig.FILE_PILLAGER);
+		String fileKey = resolveCrossbowShooterFileKey(owner);
+		if (fileKey == null) {
+			return fallbackDamage;
+		}
+		JsonObject root = root(fileKey);
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return fallbackDamage;
 		}
-		double damage = resolveScaledRangedDamage(readDouble(root, MadokuMobConfig.FIELD_RANGED_DAMAGE, 6.0D), pillager.level().getDifficulty(), isHardcoreWorld(pillager.level()));
-		damage = MadokuDifficulty.resolveMobRangedDamageScaling(pillager, damage);
+		double damage = resolveScaledRangedDamage(readDouble(root, MadokuMobConfig.FIELD_RANGED_DAMAGE, 6.0D), owner.level().getDifficulty(), isHardcoreWorld(owner.level()));
+		damage = owner instanceof Mob mob ? MadokuDifficulty.resolveMobRangedDamageScaling(mob, damage) : damage;
 		return (float) Math.max(0.0D, damage);
+	}
+
+	public static boolean isManagedHomingArrow(AbstractArrow arrow) {
+		return arrow != null && (HOMING_ARROWS.containsKey(arrow.getUUID()) || arrow.getTags().contains(HOMING_PROJECTILE_TAG));
 	}
 
 	public static Explosion applyCreeperExplosionOverride(
@@ -583,59 +658,65 @@ public final class MadokuMob {
 		return resolveBowHand(skeleton) == null;
 	}
 
-	private static void applyLoadedEntityRules(LivingEntity entity) {
+	private static boolean applyLoadedEntityRules(LivingEntity entity) {
 		if (entity == null || entity.level().isClientSide() || !snapshot.enabled) {
-			return;
+			return false;
 		}
 		if (entity instanceof Zombie zombie) {
 			JsonObject root = zombieRoot(zombie.getType());
 			if (readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
+				disableZombieReinforcements(zombie);
 				JsonObject variant = zombie.isBaby() ? zombieBabyRoot(zombie.getType(), root) : zombieAdultRoot(zombie.getType(), root);
-				applyUniversalStats(zombie, variant);
+				return applyUniversalStats(zombie, variant);
 			}
-			return;
+			return false;
 		}
 		if (entity instanceof Spider spider) {
 			if (spider.getType() == EntityType.CAVE_SPIDER) {
 				JsonObject root = root(MadokuMobConfig.FILE_CAVE_SPIDER);
-				if (readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
-					applyUniversalStats(spider, root);
-				}
-				return;
+				return readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true) && applyUniversalStats(spider, root);
 			}
 			JsonObject root = root(MadokuMobConfig.FILE_SPIDER);
-			if (readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
-				applyUniversalStats(spider, root);
-			}
-			return;
+			return readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true) && applyUniversalStats(spider, root);
 		}
 		if (entity instanceof AbstractSkeleton skeleton) {
 			JsonObject root = skeletonRoot(skeleton.getType());
-			if (readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
-				applyUniversalStats(skeleton, root);
+			boolean modified = readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true) && applyUniversalStats(skeleton, root);
+			if (skeleton.getType() == EntityType.WITHER_SKELETON) {
+				modified |= normalizeWitherSkeletonWeapon(skeleton);
 			}
-			return;
+			return modified;
 		}
 		if (entity instanceof Pillager pillager) {
 			JsonObject root = root(MadokuMobConfig.FILE_PILLAGER);
-			if (readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
-				applyUniversalStats(pillager, root);
+			return readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true) && applyUniversalStats(pillager, root);
+		}
+		if (entity instanceof Piglin piglin) {
+			JsonObject root = root(MadokuMobConfig.FILE_PIGLIN);
+			if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
+				return false;
 			}
-			return;
+			JsonObject variant = piglinVariantRoot(root, piglin.isBaby());
+			boolean modified = applyUniversalStats(piglin, variant);
+			if (piglin.isBaby()) {
+				clearPiglinMainHand(piglin);
+				return true;
+			}
+			modified |= normalizePiglinWeapon(piglin);
+			return modified;
 		}
 		if (entity instanceof Creeper creeper) {
 			JsonObject root = root(MadokuMobConfig.FILE_CREEPER);
-			if (readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
-				applyCreeperRuntimeStats(creeper, root);
-			}
+			return readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true) && applyCreeperRuntimeStats(creeper, root);
 		}
+		return false;
 	}
 
-	private static void applyDifficultyScalingAfterMobOverrides(LivingEntity entity, ServerLevel level) {
+	private static void applyDifficultyScalingAfterMobOverrides(LivingEntity entity, ServerLevel level, boolean loadedMobOverridesApplied) {
 		if (!snapshot.enabled || entity == null || !(entity instanceof Mob mob) || level == null || !MadokuDifficulty.isEnabled()) {
 			return;
 		}
-		if (mob instanceof DifficultyScaledMob scaledMob && scaledMob.madokuCraft$getSpawnDifficultyAdjustment() > 0) {
+		if (loadedMobOverridesApplied && mob instanceof DifficultyScaledMob scaledMob && scaledMob.madokuCraft$getSpawnDifficultyAdjustment() > 0) {
 			MadokuDifficulty.reapplySpawnScalingFromStoredAdjustment(mob);
 			return;
 		}
@@ -667,13 +748,14 @@ public final class MadokuMob {
 		}
 	}
 
-	private static void applyUniversalStats(LivingEntity entity, JsonObject root) {
+	private static boolean applyUniversalStats(LivingEntity entity, JsonObject root) {
 		if (entity == null || root == null) {
-			return;
+			return false;
 		}
+		boolean modified = false;
 		double oldMaxHealth = entity.getMaxHealth();
 		boolean hardcore = isHardcoreWorld(entity.level());
-		setBaseValueIfPresent(
+		modified |= setBaseValueIfPresent(
 			entity,
 			Attributes.MAX_HEALTH,
 			resolveUniversalBaseStat(
@@ -684,7 +766,7 @@ public final class MadokuMob {
 				0.0D
 			)
 		);
-		setBaseValueIfPresent(
+		modified |= setBaseValueIfPresent(
 			entity,
 			Attributes.ARMOR,
 			resolveUniversalBaseStat(
@@ -695,7 +777,7 @@ public final class MadokuMob {
 				0.0D
 			)
 		);
-		setBaseValueIfPresent(
+		modified |= setBaseValueIfPresent(
 			entity,
 			Attributes.ATTACK_DAMAGE,
 			resolveUniversalBaseStat(
@@ -706,7 +788,7 @@ public final class MadokuMob {
 				0.0D
 			)
 		);
-		setBaseValueIfPresent(
+		modified |= setBaseValueIfPresent(
 			entity,
 			Attributes.MOVEMENT_SPEED,
 			resolveUniversalBaseStat(
@@ -717,7 +799,7 @@ public final class MadokuMob {
 				0.0D
 			)
 		);
-		setBaseValueIfPresent(
+		modified |= setBaseValueIfPresent(
 			entity,
 			Attributes.KNOCKBACK_RESISTANCE,
 			resolveUniversalBaseStat(
@@ -742,14 +824,15 @@ public final class MadokuMob {
 				);
 			}
 		}
-		setBaseValueIfPresent(entity, Attributes.SCALE, resolvedScale);
+		modified |= setBaseValueIfPresent(entity, Attributes.SCALE, resolvedScale);
 		applyExperienceDrop(entity, readOptionalIntNonNegative(root, MadokuMobConfig.FIELD_EXPERIENCE_DROP));
 		rescaleCurrentHealth(entity, oldMaxHealth);
+		return modified;
 	}
 
-	private static void applyCreeperRuntimeStats(Creeper creeper, JsonObject root) {
+	private static boolean applyCreeperRuntimeStats(Creeper creeper, JsonObject root) {
 		JsonObject variant = creeper.isPowered() ? readObject(root, MadokuMobConfig.FIELD_CHARGED_CREEPER) : readObject(root, MadokuMobConfig.FIELD_CREEPER);
-		applyUniversalStats(creeper, variant);
+		boolean modified = applyUniversalStats(creeper, variant);
 		CreeperAccessor accessor = (CreeperAccessor) creeper;
 		Double fuseLength = readOptionalPositive(variant, MadokuMobConfig.FIELD_FUSE_LENGTH);
 		if (fuseLength != null) {
@@ -774,6 +857,7 @@ public final class MadokuMob {
 			int radius = Math.max(0, (int) Math.round(resolvedPower));
 			accessor.madokuCraft$setExplosionRadius(radius);
 		}
+		return modified;
 	}
 
 	private static void disableZombieReinforcements(Zombie zombie) {
@@ -793,23 +877,295 @@ public final class MadokuMob {
 		}
 	}
 
+	private static void clearArmorSlots(Mob mob) {
+		if (mob == null) {
+			return;
+		}
+		for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+			if (!mob.getItemBySlot(slot).isEmpty()) {
+				mob.setItemSlot(slot, ItemStack.EMPTY);
+			}
+		}
+	}
+
+	private static void applySpawnArmorLoadout(Mob mob, JsonObject root, RandomSource random) {
+		if (mob == null || root == null || random == null) {
+			return;
+		}
+		clearArmorSlots(mob);
+		double armorWeight = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_SPAWN_WEIGHT, 10.0D));
+		double noArmorWeight = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_NO_ARMOR_SPAWN_WEIGHT, 90.0D));
+		double total = armorWeight + noArmorWeight;
+		if (total <= 0.0D || (random.nextDouble() * total) >= armorWeight) {
+			return;
+		}
+		equipSpawnArmorLoadout(mob, root, random);
+	}
+
+	private static void equipSpawnArmorLoadout(Mob mob, JsonObject root, RandomSource random) {
+		SpawnArmorMaterial material = rollSpawnArmorMaterial(root, random);
+		SpawnArmorCoverage coverage = rollSpawnArmorCoverage(root, random);
+		if (material == null || coverage == null) {
+			return;
+		}
+		switch (coverage) {
+			case HELMET_ONLY -> equipArmorPiece(mob, material, EquipmentSlot.HEAD);
+			case HELMET_BOOTS -> {
+				equipArmorPiece(mob, material, EquipmentSlot.HEAD);
+				equipArmorPiece(mob, material, EquipmentSlot.FEET);
+			}
+			case FULL_SET -> {
+				equipArmorPiece(mob, material, EquipmentSlot.HEAD);
+				equipArmorPiece(mob, material, EquipmentSlot.CHEST);
+				equipArmorPiece(mob, material, EquipmentSlot.LEGS);
+				equipArmorPiece(mob, material, EquipmentSlot.FEET);
+			}
+		}
+	}
+
+	private static void equipArmorPiece(Mob mob, SpawnArmorMaterial material, EquipmentSlot slot) {
+		if (mob == null || material == null || slot == null) {
+			return;
+		}
+		ItemStack stack = armorStack(material, slot);
+		if (!stack.isEmpty()) {
+			mob.setItemSlot(slot, stack);
+		}
+	}
+
+	private static ItemStack armorStack(SpawnArmorMaterial material, EquipmentSlot slot) {
+		if (material == null || slot == null) {
+			return ItemStack.EMPTY;
+		}
+		return switch (material) {
+			case NETHERITE -> switch (slot) {
+				case HEAD -> new ItemStack(Items.NETHERITE_HELMET);
+				case CHEST -> new ItemStack(Items.NETHERITE_CHESTPLATE);
+				case LEGS -> new ItemStack(Items.NETHERITE_LEGGINGS);
+				case FEET -> new ItemStack(Items.NETHERITE_BOOTS);
+				default -> ItemStack.EMPTY;
+			};
+			case DIAMOND -> switch (slot) {
+				case HEAD -> new ItemStack(Items.DIAMOND_HELMET);
+				case CHEST -> new ItemStack(Items.DIAMOND_CHESTPLATE);
+				case LEGS -> new ItemStack(Items.DIAMOND_LEGGINGS);
+				case FEET -> new ItemStack(Items.DIAMOND_BOOTS);
+				default -> ItemStack.EMPTY;
+			};
+			case GOLD -> switch (slot) {
+				case HEAD -> new ItemStack(Items.GOLDEN_HELMET);
+				case CHEST -> new ItemStack(Items.GOLDEN_CHESTPLATE);
+				case LEGS -> new ItemStack(Items.GOLDEN_LEGGINGS);
+				case FEET -> new ItemStack(Items.GOLDEN_BOOTS);
+				default -> ItemStack.EMPTY;
+			};
+			case IRON -> switch (slot) {
+				case HEAD -> new ItemStack(Items.IRON_HELMET);
+				case CHEST -> new ItemStack(Items.IRON_CHESTPLATE);
+				case LEGS -> new ItemStack(Items.IRON_LEGGINGS);
+				case FEET -> new ItemStack(Items.IRON_BOOTS);
+				default -> ItemStack.EMPTY;
+			};
+			case COPPER -> switch (slot) {
+				case HEAD -> new ItemStack(Items.IRON_HELMET);
+				case CHEST -> new ItemStack(Items.IRON_CHESTPLATE);
+				case LEGS -> new ItemStack(Items.IRON_LEGGINGS);
+				case FEET -> new ItemStack(Items.IRON_BOOTS);
+				default -> ItemStack.EMPTY;
+			};
+			case LEATHER -> switch (slot) {
+				case HEAD -> new ItemStack(Items.LEATHER_HELMET);
+				case CHEST -> new ItemStack(Items.LEATHER_CHESTPLATE);
+				case LEGS -> new ItemStack(Items.LEATHER_LEGGINGS);
+				case FEET -> new ItemStack(Items.LEATHER_BOOTS);
+				default -> ItemStack.EMPTY;
+			};
+		};
+	}
+
+	private static SpawnArmorMaterial rollSpawnArmorMaterial(JsonObject root, RandomSource random) {
+		double netherite = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_NETHERITE_WEIGHT, 1.0D));
+		double diamond = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_DIAMOND_WEIGHT, 5.0D));
+		double gold = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_GOLD_WEIGHT, 10.0D));
+		double iron = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_IRON_WEIGHT, 17.0D));
+		double copper = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_COPPER_WEIGHT, 28.0D));
+		double leather = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_LEATHER_WEIGHT, 39.0D));
+		double total = netherite + diamond + gold + iron + copper + leather;
+		if (total <= 0.0D) {
+			return null;
+		}
+		double roll = random.nextDouble() * total;
+		if (roll < netherite) {
+			return SpawnArmorMaterial.NETHERITE;
+		}
+		roll -= netherite;
+		if (roll < diamond) {
+			return SpawnArmorMaterial.DIAMOND;
+		}
+		roll -= diamond;
+		if (roll < gold) {
+			return SpawnArmorMaterial.GOLD;
+		}
+		roll -= gold;
+		if (roll < iron) {
+			return SpawnArmorMaterial.IRON;
+		}
+		roll -= iron;
+		if (roll < copper) {
+			return SpawnArmorMaterial.COPPER;
+		}
+		return SpawnArmorMaterial.LEATHER;
+	}
+
+	private static SpawnArmorCoverage rollSpawnArmorCoverage(JsonObject root, RandomSource random) {
+		double helmetOnly = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_HELMET_ONLY_WEIGHT, 60.0D));
+		double helmetBoots = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_HELMET_BOOTS_WEIGHT, 30.0D));
+		double fullSet = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ARMOR_FULL_SET_WEIGHT, 10.0D));
+		double total = helmetOnly + helmetBoots + fullSet;
+		if (total <= 0.0D) {
+			return null;
+		}
+		double roll = random.nextDouble() * total;
+		if (roll < helmetOnly) {
+			return SpawnArmorCoverage.HELMET_ONLY;
+		}
+		roll -= helmetOnly;
+		if (roll < helmetBoots) {
+			return SpawnArmorCoverage.HELMET_BOOTS;
+		}
+		return SpawnArmorCoverage.FULL_SET;
+	}
+
+	private static void equipPiglinWeapon(Piglin piglin, JsonObject root, RandomSource random) {
+		if (piglin == null || root == null || random == null) {
+			return;
+		}
+		ItemStack weapon = rollPiglinSpawnWeapon(root, random);
+		if (!weapon.isEmpty()) {
+			piglin.setItemSlot(EquipmentSlot.MAINHAND, weapon);
+		}
+	}
+
+	private static ItemStack rollPiglinSpawnWeapon(JsonObject root, RandomSource random) {
+		double crossbow = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_CROSSBOW_SPAWN_WEIGHT, 50.0D));
+		double goldenSword = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_GOLDEN_SWORD_SPAWN_WEIGHT, 50.0D));
+		double total = crossbow + goldenSword;
+		if (total <= 0.0D) {
+			return ItemStack.EMPTY;
+		}
+		double roll = random.nextDouble() * total;
+		if (roll < crossbow) {
+			return new ItemStack(Items.CROSSBOW);
+		}
+		ItemStack sword = new ItemStack(Items.GOLDEN_SWORD);
+		sword.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.builder().build());
+		return sword;
+	}
+
+	private static boolean rollPiglinBabySpawn(JsonObject root, ServerLevelAccessor world) {
+		if (root == null || world == null) {
+			return false;
+		}
+		double adultWeight = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_ADULT_PIGLIN_SPAWN_WEIGHT, 90.0D));
+		double babyWeight = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_BABY_PIGLIN_SPAWN_WEIGHT, 10.0D));
+		double total = adultWeight + babyWeight;
+		if (total <= 0.0D) {
+			return false;
+		}
+		return (world.getRandom().nextDouble() * total) < babyWeight;
+	}
+
+	private static JsonObject piglinVariantRoot(JsonObject root, boolean baby) {
+		return baby ? readObject(root, MadokuMobConfig.FIELD_BABY_PIGLIN) : readObject(root, MadokuMobConfig.FIELD_ADULT_PIGLIN);
+	}
+
+	private static JsonObject piglinAdultRoot(JsonObject root) {
+		return readObject(root, MadokuMobConfig.FIELD_ADULT_PIGLIN);
+	}
+
+	private static void clearPiglinMainHand(Piglin piglin) {
+		if (piglin != null) {
+			piglin.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		}
+	}
+
+	private static boolean normalizePiglinWeapon(Piglin piglin) {
+		if (piglin == null) {
+			return false;
+		}
+		ItemStack mainHand = piglin.getMainHandItem();
+		if (!mainHand.is(Items.GOLDEN_SWORD)) {
+			return false;
+		}
+		mainHand.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.builder().build());
+		return true;
+	}
+
+	private static void applyWitherSkeletonSpawnOverrides(AbstractSkeleton skeleton, ServerLevelAccessor world) {
+		if (skeleton == null || world == null) {
+			return;
+		}
+		JsonObject root = root(MadokuMobConfig.FILE_WITHER_SKELETON);
+		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
+			return;
+		}
+		clearMobEquipment(skeleton);
+		applyUniversalStats(skeleton, root);
+		applySpawnArmorLoadout(skeleton, root, world.getRandom());
+		ItemStack weapon = rollWitherSkeletonSpawnWeapon(root, world.getRandom());
+		if (!weapon.isEmpty()) {
+			skeleton.setItemSlot(EquipmentSlot.MAINHAND, weapon);
+		}
+	}
+
+	private static ItemStack rollWitherSkeletonSpawnWeapon(JsonObject root, RandomSource random) {
+		double sword = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_WITHER_SWORD_SPAWN_WEIGHT, 90.0D));
+		double bow = Math.max(0.0D, readDouble(root, MadokuMobConfig.FIELD_WITHER_BOW_SPAWN_WEIGHT, 10.0D));
+		double total = sword + bow;
+		if (total <= 0.0D) {
+			return ItemStack.EMPTY;
+		}
+		double roll = random.nextDouble() * total;
+		if (roll < sword) {
+			ItemStack weapon = new ItemStack(Items.NETHERITE_SWORD);
+			weapon.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.builder().build());
+			return weapon;
+		}
+		return new ItemStack(Items.BOW);
+	}
+
+	private static boolean normalizeWitherSkeletonWeapon(AbstractSkeleton skeleton) {
+		if (skeleton == null) {
+			return false;
+		}
+		ItemStack mainHand = skeleton.getMainHandItem();
+		if (!mainHand.is(Items.NETHERITE_SWORD)) {
+			return false;
+		}
+		mainHand.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.builder().build());
+		return true;
+	}
+
 	private static void applyExperienceDrop(LivingEntity entity, Integer experienceDrop) {
 		if (entity instanceof Mob mob && experienceDrop != null) {
 			((MobExperienceAccessor) mob).madokuCraft$setXpReward(Math.max(0, experienceDrop));
 		}
 	}
 
-	private static void setBaseValue(LivingEntity entity, Holder<Attribute> attribute, double value) {
+	private static boolean setBaseValue(LivingEntity entity, Holder<Attribute> attribute, double value) {
 		AttributeInstance instance = entity.getAttribute(attribute);
-		if (instance != null && Double.compare(instance.getBaseValue(), value) != 0) {
-			instance.setBaseValue(value);
+		if (instance == null || Double.compare(instance.getBaseValue(), value) == 0) {
+			return false;
 		}
+		instance.setBaseValue(value);
+		return true;
 	}
 
-	private static void setBaseValueIfPresent(LivingEntity entity, Holder<Attribute> attribute, Double value) {
+	private static boolean setBaseValueIfPresent(LivingEntity entity, Holder<Attribute> attribute, Double value) {
 		if (value != null) {
-			setBaseValue(entity, attribute, value);
+			return setBaseValue(entity, attribute, value);
 		}
+		return false;
 	}
 
 	private static void rescaleCurrentHealth(LivingEntity entity, double oldMaxHealth) {
@@ -831,7 +1187,7 @@ public final class MadokuMob {
 			FIXED_ARROW_DAMAGE.remove(id);
 			MANAGED_MOB_ARROWS.remove(id);
 		}
-		if (entity instanceof Pillager) {
+		if (entity instanceof Pillager || entity instanceof Piglin) {
 			PILLAGER_ATTACK_COOLDOWNS.remove(id);
 		}
 		PENDING_CAVE_SPIDER_REPLACEMENTS.remove(id);
@@ -1062,20 +1418,21 @@ public final class MadokuMob {
 		}
 	}
 
-	private static void markPillagerAttackCooldown(Pillager pillager) {
-		int cooldownTicks = Math.max(0, resolvePillagerAttackIntervalTicks(pillager));
+	private static void markCrossbowAttackCooldown(Monster attacker) {
+		int cooldownTicks = Math.max(0, resolveCrossbowAttackIntervalTicks(attacker));
 		if (cooldownTicks <= 0) {
-			PILLAGER_ATTACK_COOLDOWNS.remove(pillager.getUUID());
+			PILLAGER_ATTACK_COOLDOWNS.remove(attacker.getUUID());
 			return;
 		}
-		PILLAGER_ATTACK_COOLDOWNS.put(pillager.getUUID(), cooldownTicks);
+		PILLAGER_ATTACK_COOLDOWNS.put(attacker.getUUID(), cooldownTicks);
 	}
 
-	private static int resolvePillagerAttackIntervalTicks(Monster attacker) {
-		if (!(attacker instanceof Pillager) || !snapshot.enabled) {
+	private static int resolveCrossbowAttackIntervalTicks(Monster attacker) {
+		String fileKey = resolveCrossbowShooterFileKey(attacker);
+		if (fileKey == null || !snapshot.enabled) {
 			return -1;
 		}
-		JsonObject root = root(MadokuMobConfig.FILE_PILLAGER);
+		JsonObject root = root(fileKey);
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return -1;
 		}
@@ -1083,16 +1440,27 @@ public final class MadokuMob {
 		return Math.max(1, (int) Math.round(interval));
 	}
 
-	private static int resolvePillagerChargeUpTicks(Monster attacker) {
-		if (!(attacker instanceof Pillager) || !snapshot.enabled) {
+	private static int resolveCrossbowChargeUpTicks(Monster attacker) {
+		String fileKey = resolveCrossbowShooterFileKey(attacker);
+		if (fileKey == null || !snapshot.enabled) {
 			return -1;
 		}
-		JsonObject root = root(MadokuMobConfig.FILE_PILLAGER);
+		JsonObject root = root(fileKey);
 		if (!readBoolean(root, MadokuMobConfig.FIELD_ENABLED, true)) {
 			return -1;
 		}
 		double charge = readDouble(root, MadokuMobConfig.FIELD_CHARGE_UP_TICKS, 10.0D);
 		return Math.max(1, (int) Math.round(charge));
+	}
+
+	private static String resolveCrossbowShooterFileKey(LivingEntity shooter) {
+		if (shooter instanceof Pillager) {
+			return MadokuMobConfig.FILE_PILLAGER;
+		}
+		if (shooter instanceof Piglin) {
+			return MadokuMobConfig.FILE_PIGLIN;
+		}
+		return null;
 	}
 
 	private static InteractionHand resolveBowHand(AbstractSkeleton skeleton) {
@@ -1299,6 +1667,9 @@ public final class MadokuMob {
 		if (type == EntityType.BOGGED) {
 			return root(MadokuMobConfig.FILE_BOGGED);
 		}
+		if (type == EntityType.WITHER_SKELETON) {
+			return root(MadokuMobConfig.FILE_WITHER_SKELETON);
+		}
 		return new JsonObject();
 	}
 
@@ -1449,6 +1820,19 @@ public final class MadokuMob {
 	private record HomingArrowState(UUID targetUuid, double speed, int remainingTicks) {}
 	private record ShotVector(Vec3 vector, boolean guaranteedHit) {}
 	private record SpawnWeightPair(double regularWeight, double specialWeight) {}
+	private enum SpawnArmorMaterial {
+		NETHERITE,
+		DIAMOND,
+		GOLD,
+		IRON,
+		COPPER,
+		LEATHER
+	}
+	private enum SpawnArmorCoverage {
+		HELMET_ONLY,
+		HELMET_BOOTS,
+		FULL_SET
+	}
 
 	private enum SpawnOutcome {
 		SPIDER,
@@ -1462,3 +1846,4 @@ public final class MadokuMob {
 		}
 	}
 }
+

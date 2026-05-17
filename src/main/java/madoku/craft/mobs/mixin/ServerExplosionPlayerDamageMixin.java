@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 @Mixin(Explosion.class)
-public abstract class ExplosionPlayerDamageMixin {
+public abstract class ServerExplosionPlayerDamageMixin {
 	@Shadow
 	@Final
 	private Entity source;
@@ -40,3 +40,4 @@ public abstract class ExplosionPlayerDamageMixin {
 		return calculator.getEntityDamageAmount(explosion, damagedEntity);
 	}
 }
+

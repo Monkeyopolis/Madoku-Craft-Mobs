@@ -12,3 +12,4 @@ public interface MobExperienceAccessor {
 	@Accessor("xpReward")
 	void madokuCraft$setXpReward(int value);
 }
+
