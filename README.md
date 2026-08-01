@@ -1,21 +1,28 @@
-## Madoku Craft: Mobs
+## Overview
 
-Madoku Craft: Items is a configurable MOB system.
-It allows users to customize MOBs their specific needs.
-This system scales MOBs depending on the Gamemode and Region they're in.
-Certain MOBs were also modified to behave differently.
+Madoku Craft: Mobs is a configurable mob system.
+It adds regional scaling and world scaling to mobs.
+It also modifies certain mobs to behave differently.
+You can customize most of these features in the config files.
 
 ## Dependencies
 
 - Fabric API
 - Madoku Craft API
 
-## Implementation
+## Features
 
-This MOD by default adjusts the stats of MOBs.
-It also adds and removes certain Behaviors from MOBs.
-Zombies no longer spawn reinforcements or spawn with Equipment.
-Skeletons and Pillagers now uses a accuracy mechanic, which makes them either entirely miss, or shoot a homing arrow.
-Creepers now have a chance to Greif instead of always destroying blocks.
-A MOB's stats can Scale based on the in-game Days, Biome and Structure they spawned in.
-There are many changed mechanics that you can customize via the CONFIG file.
+Entities:
+
+- You can customize a mob entity's stats and behaviors.
+- You can also create new variants for mobs in the config files.
+
+Regional Difficulty:
+
+- Mobs scale based on the amount of time has passed in-game, the structure they spawned in, and the biome they spawned in.
+- Mob scaling affects their health, armor, movement speed, damage, and other stats.
+
+World Dificulty:
+
+- Mobs scale based on the world difficulty, which affects their health, armor, movement speed, damage, and other stats.
+- You can adjust the world difficulty in your world's difficulty setting, the mod is balanced around normal difficulty.

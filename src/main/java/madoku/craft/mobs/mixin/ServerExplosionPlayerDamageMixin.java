@@ -1,6 +1,7 @@
 package madoku.craft.mobs.mixin;
 
-import madoku.craft.mobs.mob.system.MadokuMob;
+import madoku.craft.mobs.mob.EntityBehaviorsManager;
+
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
@@ -36,10 +37,11 @@ public abstract class ServerExplosionPlayerDamageMixin {
 		Entity damagedEntity,
 		float seenPercent
 	) {
-		if (source instanceof Creeper creeper && damagedEntity instanceof Player) {
-			return MadokuMob.resolveFixedPlayerExplosionDamage(creeper, radius);
+		if (source instanceof Creeper creeper
+			&& damagedEntity instanceof Player
+			&& EntityBehaviorsManager.CreeperBehavior.shouldUseMobExplodeBehavior(creeper)) {
+			return EntityBehaviorsManager.CreeperBehavior.resolveFixedPlayerExplosionDamage(creeper, radius);
 		}
 		return calculator.getEntityDamageAmount(explosion, damagedEntity, seenPercent);
 	}
 }
-

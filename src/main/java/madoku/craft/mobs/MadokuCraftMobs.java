@@ -1,7 +1,6 @@
 package madoku.craft.mobs;
 
-import madoku.craft.mobs.difficulty.system.MadokuDifficulty;
-import madoku.craft.mobs.mob.system.MadokuMob;
+import madoku.craft.mobs.mob.MadokuMobManager;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -14,22 +13,18 @@ public class MadokuCraftMobs implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		MadokuDifficulty.initialize();
-		MadokuMob.initialize();
+		MadokuMobManager.initialize();
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			MadokuMob.onServerStarted(server);
-			MadokuDifficulty.onServerStarted(server);
+			MadokuMobManager.onServerStarted(server);
 		});
 
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-			MadokuDifficulty.onServerStopped();
-			MadokuMob.onServerStopped();
+			MadokuMobManager.onServerStopped();
 		});
 
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
-			MadokuDifficulty.onServerTick(server);
-			MadokuMob.onServerTick(server);
+			MadokuMobManager.onServerTick(server);
 		});
 
 		LOGGER.info("Madoku Craft Mobs initialized.");

@@ -1,16 +1,17 @@
 package madoku.craft.mobs.mixin;
 
-import madoku.craft.mobs.mob.MobEntityManager;
+import madoku.craft.mobs.mob.EntityBehaviorsManager;
+
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
+import net.minecraft.world.entity.monster.zombie.Husk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-@Mixin(WitherSkeleton.class)
-public abstract class WitherSkeletonWitherEffectMixin {
+@Mixin(Husk.class)
+public abstract class HuskHungerEffectMixin {
 	@Redirect(
 		method = "doHurtTarget",
 		at = @At(
@@ -18,11 +19,13 @@ public abstract class WitherSkeletonWitherEffectMixin {
 			target = "Lnet/minecraft/world/entity/LivingEntity;addEffect(Lnet/minecraft/world/effect/MobEffectInstance;Lnet/minecraft/world/entity/Entity;)Z"
 		)
 	)
-	private boolean madokuCraft$applyFiveSecondWitherEffect(
+	private boolean madokuCraft$applyHuskHungerEffect(
 		LivingEntity target,
 		MobEffectInstance effect,
 		Entity attacker
 	) {
-		return MobEntityManager.applyWitherSkeletonMeleeHitEffect(target, attacker);
+		return EntityBehaviorsManager.HuskBehavior.applyHungerAttackEffect((Husk) (Object) this, target, effect, attacker);
 	}
 }
+
+

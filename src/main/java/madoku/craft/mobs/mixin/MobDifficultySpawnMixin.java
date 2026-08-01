@@ -1,8 +1,7 @@
 package madoku.craft.mobs.mixin;
 
-import madoku.craft.mobs.difficulty.system.DifficultyScaledMob;
-import madoku.craft.mobs.difficulty.system.MadokuDifficulty;
-import madoku.craft.mobs.mob.system.MadokuMob;
+import madoku.craft.mobs.mob.MobRegionalDifficultyManager;
+import madoku.craft.mobs.mob.MobEntityManager;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.Mob;
@@ -18,12 +17,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Mob.class)
-public abstract class MobDifficultySpawnMixin implements DifficultyScaledMob {
+public abstract class MobDifficultySpawnMixin implements MobEntityManager.DifficultyState {
 	@Unique
 	private static final String MADOKU_CRAFT_DIFFICULTY_ADJUSTMENT_KEY = "madoku_craft_spawn_difficulty_adjustment";
 
 	@Unique
 	private int madokuCraft$spawnDifficultyAdjustment;
+
+	@Unique
+	private boolean madokuCraft$worldDifficultyScalingApplied;
 
 	@Inject(method = "finalizeSpawn", at = @At("RETURN"))
 	private void madokuCraft$applySpawnDifficultyScaling(
@@ -33,11 +35,13 @@ public abstract class MobDifficultySpawnMixin implements DifficultyScaledMob {
 		SpawnGroupData spawnGroupData,
 		CallbackInfoReturnable<SpawnGroupData> cir
 	) {
-		if (MadokuMob.isEnabled()) {
+		if (!MobEntityManager.isEnabled() || !MobRegionalDifficultyManager.isEnabled()) {
 			return;
 		}
 		Mob mob = (Mob) (Object) this;
-		MadokuDifficulty.applySpawnScalingIfUnscaled(mob, world);
+		if (MobEntityManager.isRegionalDifficultyScalingEnabledForRuntime(mob)) {
+			MobRegionalDifficultyManager.applySpawnScalingIfUnscaled(mob, world);
+		}
 	}
 
 	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
@@ -58,6 +62,16 @@ public abstract class MobDifficultySpawnMixin implements DifficultyScaledMob {
 	@Override
 	public void madokuCraft$setSpawnDifficultyAdjustment(int adjustment) {
 		madokuCraft$spawnDifficultyAdjustment = Math.max(0, adjustment);
+	}
+
+	@Override
+	public boolean madokuCraft$isWorldDifficultyScalingApplied() {
+		return madokuCraft$worldDifficultyScalingApplied;
+	}
+
+	@Override
+	public void madokuCraft$setWorldDifficultyScalingApplied(boolean applied) {
+		madokuCraft$worldDifficultyScalingApplied = applied;
 	}
 }
 
