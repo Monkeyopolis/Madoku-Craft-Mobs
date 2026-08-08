@@ -7,7 +7,7 @@ import com.google.gson.JsonObject;
 import madoku.craft.api.json.JSONFormatManager;
 import madoku.craft.api.json.JSONTypeManager;
 import madoku.craft.api.json.MadokuJSONManager;
-import madoku.craft.loot.system.EquipmentConfigManager;
+import madoku.craft.api.loot.EquipmentsConfigManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -258,7 +258,7 @@ public final class MobConfigManager {
 		runtimeConfig = systemEnabled && entitiesEnabled
 			? new RuntimeConfig(true, Map.copyOf(files))
 			: RuntimeConfig.disabled();
-		EquipmentConfigManager.reloadConfig();
+		EquipmentsConfigManager.reloadConfig();
 	}
 
 	private static Path ensureDirectory(Path path) throws IOException {

@@ -1,16 +1,16 @@
-## Overview
+## Overview:
 
 Madoku Craft: Mobs is a configurable mob system.
 It adds regional scaling and world scaling to mobs.
 It also modifies certain mobs to behave differently.
 You can customize most of these features in the config files.
 
-## Dependencies
+## Dependencies:
 
 - Fabric API
 - Madoku Craft API
 
-## Features
+## Features:
 
 Entities:
 
