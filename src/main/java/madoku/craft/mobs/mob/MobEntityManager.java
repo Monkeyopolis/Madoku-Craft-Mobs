@@ -3,6 +3,7 @@ package madoku.craft.mobs.mob;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import madoku.craft.api.helper.HelperProjectileManager;
 import madoku.craft.mobs.mixin.CreeperAccessor;
 import madoku.craft.mobs.mixin.CreeperPoweredAccessor;
 import madoku.craft.mobs.mixin.MobExperienceAccessor;
@@ -40,7 +41,6 @@ import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Drowned;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.zombie.Husk;
-import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.item.ItemStack;
@@ -76,17 +76,9 @@ public final class MobEntityManager {
 	private static final String TASK_TYPE_MOB_RUNTIME_TICK = "mob_runtime_tick";
 	private static final String MOB_SCHEDULER_OWNER_ID = "madoku-mob-runtime";
 	private static final double CREEPER_POWER_PER_DAMAGE = 0.2D;
-	private static final double MIN_HOMING_SPEED = 0.75D;
-	private static final int HOMING_LIFETIME_TICKS = 60;
-	private static final int MOB_ARROW_LIFETIME_TICKS = 15 * 20;
-	private static final String HOMING_PROJECTILE_TAG = "madoku-craft.projectile.homing";
 	private static final String NESTED_VARIANT_TAG_PREFIX = "madoku-craft.nested-variant:";
 	private static final String FIELD_FLYING_SPEED = MobConfigManager.FIELD_FLYING_SPEED;
 
-	private static final Map<UUID, HomingArrowState> HOMING_ARROWS = new ConcurrentHashMap<>();
-	private static final Map<UUID, Float> FIXED_ARROW_DAMAGE = new ConcurrentHashMap<>();
-	private static final Map<UUID, Integer> MANAGED_MOB_ARROWS = new ConcurrentHashMap<>();
-	private static final java.util.Set<UUID> INVULNERABILITY_BYPASS_ARROWS = ConcurrentHashMap.newKeySet();
 	private static final Map<UUID, EntitySpawnReason> PENDING_CAVE_SPIDER_REPLACEMENTS = new ConcurrentHashMap<>();
 	private static final Map<UUID, PendingZombieReplacement> PENDING_ZOMBIE_REPLACEMENTS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Entity> TRACKED_ENTITIES = new ConcurrentHashMap<>();
@@ -126,10 +118,6 @@ public final class MobEntityManager {
 		MadokuSchedulerManager.clearAdaptiveDelayState(MOB_SCHEDULER_OWNER_ID);
 		runtimeSchedulerId = "";
 		runtimeTaskScheduled = false;
-		HOMING_ARROWS.clear();
-		FIXED_ARROW_DAMAGE.clear();
-		MANAGED_MOB_ARROWS.clear();
-		INVULNERABILITY_BYPASS_ARROWS.clear();
 		PENDING_CAVE_SPIDER_REPLACEMENTS.clear();
 		PENDING_ZOMBIE_REPLACEMENTS.clear();
 		TRACKED_ENTITIES.clear();
@@ -154,10 +142,6 @@ public final class MobEntityManager {
 		MadokuSchedulerManager.clearAdaptiveDelayState(MOB_SCHEDULER_OWNER_ID);
 		runtimeSchedulerId = "";
 		runtimeTaskScheduled = false;
-		HOMING_ARROWS.clear();
-		FIXED_ARROW_DAMAGE.clear();
-		MANAGED_MOB_ARROWS.clear();
-		INVULNERABILITY_BYPASS_ARROWS.clear();
 		PENDING_CAVE_SPIDER_REPLACEMENTS.clear();
 		PENDING_ZOMBIE_REPLACEMENTS.clear();
 		TRACKED_ENTITIES.clear();
@@ -731,9 +715,8 @@ public final class MobEntityManager {
 		if (arrow == null) {
 			return fallbackDamage;
 		}
-		Float fixed = FIXED_ARROW_DAMAGE.get(arrow.getUUID());
-		if (fixed != null) {
-			return Math.max(0.0F, fixed);
+		if (HelperProjectileManager.hasProjectileDamageOverride(arrow)) {
+			return HelperProjectileManager.resolveProjectileDamageOverride(arrow, fallbackDamage);
 		}
 		if (arrow.getOwner() instanceof AbstractSkeleton skeleton && MobConfigManager.isEnabled() && isBowAttackEnabledForRuntimeSkeleton(skeleton)) {
 			JsonObject root = resolveSkeletonVariantRuntimeRoot(skeleton);
@@ -748,27 +731,21 @@ public final class MobEntityManager {
 		if (arrow == null) {
 			return;
 		}
-		FIXED_ARROW_DAMAGE.put(arrow.getUUID(), Math.max(0.0F, damage));
+		HelperProjectileManager.setProjectileDamageOverride(arrow, damage);
 	}
 
 	public static void startProjectileHoming(AbstractArrow arrow, LivingEntity target, MinecraftServer server) {
 		if (arrow == null || target == null || server == null) {
 			return;
 		}
-		double homingSpeed = Math.max(MIN_HOMING_SPEED, arrow.getDeltaMovement().length());
-		arrow.setNoGravity(true);
-		HOMING_ARROWS.put(arrow.getUUID(), new HomingArrowState(target.getUUID(), homingSpeed, HOMING_LIFETIME_TICKS));
-		requestRuntimeProcessing(server, resolveRuntimeProcessingInterval(server));
+		HelperProjectileManager.startProjectileHoming(arrow, target);
 	}
 
 	public static void clearProjectileHoming(AbstractArrow arrow) {
 		if (arrow == null) {
 			return;
 		}
-		HOMING_ARROWS.remove(arrow.getUUID());
-		if (arrow.isAlive()) {
-			arrow.setNoGravity(false);
-		}
+		HelperProjectileManager.clearProjectileHoming(arrow);
 	}
 
 	public static boolean spawnManagedHomingArrow(
@@ -778,42 +755,20 @@ public final class MobEntityManager {
 		float speed,
 		float damage
 	) {
-		if (shooter == null || target == null || !target.isAlive() || spawnPosition == null || !(shooter.level() instanceof ServerLevel level)) {
-			return false;
-		}
-
-		Arrow arrow = new Arrow(level, shooter, new ItemStack(Items.ARROW), new ItemStack(Items.BOW));
-		arrow.setPos(spawnPosition.x, spawnPosition.y, spawnPosition.z);
-		Vec3 desired = target.getEyePosition().subtract(spawnPosition);
-		if (desired.lengthSqr() <= 1.0E-6D) {
-			desired = shooter.getLookAngle();
-		}
-		arrow.shoot(desired.x, desired.y, desired.z, Math.max(0.1F, speed), 0.0F);
-		arrow.setCritArrow(false);
-		arrow.pickup = AbstractArrow.Pickup.DISALLOWED;
-		FIXED_ARROW_DAMAGE.put(arrow.getUUID(), Math.max(0.0F, damage));
-		INVULNERABILITY_BYPASS_ARROWS.add(arrow.getUUID());
-		trackManagedMobArrow(arrow, level.getServer());
-		double homingSpeed = Math.max(MIN_HOMING_SPEED, arrow.getDeltaMovement().length());
-		arrow.setNoGravity(true);
-		arrow.addTag(HOMING_PROJECTILE_TAG);
-		HOMING_ARROWS.put(arrow.getUUID(), new HomingArrowState(target.getUUID(), homingSpeed, HOMING_LIFETIME_TICKS));
-		requestRuntimeProcessing(level.getServer(), resolveRuntimeProcessingInterval(level.getServer()));
-		shooter.level().addFreshEntity(arrow);
-		return true;
+		return HelperProjectileManager.spawnManagedHomingArrow(shooter, target, spawnPosition, speed, damage);
 	}
 
 	public static boolean shouldBypassInvulnerability(AbstractArrow arrow) {
-		return arrow != null && INVULNERABILITY_BYPASS_ARROWS.contains(arrow.getUUID());
+		return HelperProjectileManager.shouldBypassInvulnerability(arrow);
 	}
 
 	public static boolean isManagedHomingArrow(AbstractArrow arrow) {
-		return arrow != null && (HOMING_ARROWS.containsKey(arrow.getUUID()) || arrow.entityTags().contains(HOMING_PROJECTILE_TAG));
+		return HelperProjectileManager.isManagedHomingProjectile(arrow);
 	}
 
 	public static void clearInvulnerabilityBypass(AbstractArrow arrow) {
 		if (arrow != null) {
-			INVULNERABILITY_BYPASS_ARROWS.remove(arrow.getUUID());
+			HelperProjectileManager.clearInvulnerabilityBypass(arrow);
 		}
 	}
 
@@ -1470,9 +1425,7 @@ public final class MobEntityManager {
 		}
 		UUID id = entity.getUUID();
 		if (entity instanceof AbstractArrow) {
-			HOMING_ARROWS.remove(id);
-			FIXED_ARROW_DAMAGE.remove(id);
-			MANAGED_MOB_ARROWS.remove(id);
+			HelperProjectileManager.onEntityCleanup(entity);
 		}
 		PENDING_CAVE_SPIDER_REPLACEMENTS.remove(id);
 		PENDING_ZOMBIE_REPLACEMENTS.remove(id);
@@ -1490,8 +1443,6 @@ public final class MobEntityManager {
 			runtimeSchedulerId = context.getSchedulerId();
 		}
 		runtimeTaskScheduled = false;
-		tickManagedMobArrows(server);
-		tickHomingProjectiles(server);
 		boolean beeRuntimeActive = EntityBehaviorsManager.BeeBehavior.tickRuntime(
 			server,
 			TRACKED_ENTITIES.values(),
@@ -1499,9 +1450,7 @@ public final class MobEntityManager {
 			isMobFileEnabled(MobConfigManager.FILE_BEE)
 		);
 		boolean mobBabyRuntimeActive = tickConfiguredMobBabyStates();
-		if (!MANAGED_MOB_ARROWS.isEmpty()
-			|| !HOMING_ARROWS.isEmpty()
-			|| beeRuntimeActive
+		if (beeRuntimeActive
 			|| mobBabyRuntimeActive) {
 			requestRuntimeProcessing(server, resolveRuntimeProcessingInterval(server));
 		}
@@ -1586,107 +1535,12 @@ public final class MobEntityManager {
 		return status == MadokuSchedulerManager.EnqueueStatus.ACCEPTED || status == MadokuSchedulerManager.EnqueueStatus.QUEUE_FULL;
 	}
 
-	private static void tickHomingProjectiles(MinecraftServer server) {
-		if (server == null || HOMING_ARROWS.isEmpty()) {
-			return;
-		}
-		for (Map.Entry<UUID, HomingArrowState> entry : HOMING_ARROWS.entrySet()) {
-			UUID arrowId = entry.getKey();
-			HomingArrowState state = entry.getValue();
-			if (state.remainingTicks <= 0) {
-				releaseHomingArrow(arrowId, findArrow(server, arrowId));
-				continue;
-			}
-			AbstractArrow arrow = findArrow(server, arrowId);
-			if (arrow == null || !arrow.isAlive() || arrow.onGround()) {
-				HOMING_ARROWS.remove(arrowId);
-				FIXED_ARROW_DAMAGE.remove(arrowId);
-				continue;
-			}
-			Entity target = findEntity(server, state.targetUuid);
-			if (!(target instanceof LivingEntity living) || !living.isAlive()) {
-				releaseHomingArrow(arrowId, arrow);
-				continue;
-			}
-			Vec3 toTarget = new Vec3(target.getX() - arrow.getX(), target.getY(0.5D) - arrow.getY(), target.getZ() - arrow.getZ());
-			if (toTarget.lengthSqr() <= 1.0E-6D) {
-				releaseHomingArrow(arrowId, arrow);
-				continue;
-			}
-			double speed = Math.max(state.speed, arrow.getDeltaMovement().length());
-			arrow.setNoGravity(true);
-			arrow.setDeltaMovement(toTarget.normalize().scale(speed));
-			HOMING_ARROWS.put(arrowId, new HomingArrowState(state.targetUuid, speed, state.remainingTicks - 1));
-		}
-	}
-
-	private static void tickManagedMobArrows(MinecraftServer server) {
-		if (server == null || MANAGED_MOB_ARROWS.isEmpty()) {
-			return;
-		}
-		for (Map.Entry<UUID, Integer> entry : MANAGED_MOB_ARROWS.entrySet()) {
-			UUID arrowId = entry.getKey();
-			int remainingTicks = entry.getValue() == null ? 0 : entry.getValue();
-			AbstractArrow arrow = findArrow(server, arrowId);
-			if (arrow == null || !arrow.isAlive()) {
-				removeArrowRuntimeState(arrowId);
-				continue;
-			}
-			if (remainingTicks <= 0) {
-				arrow.discard();
-				removeArrowRuntimeState(arrowId);
-				continue;
-			}
-			MANAGED_MOB_ARROWS.put(arrowId, remainingTicks - 1);
-		}
-	}
-
-	private static Entity findEntity(MinecraftServer server, UUID entityId) {
-		if (server == null || entityId == null) {
-			return null;
-		}
-		Entity entity = TRACKED_ENTITIES.get(entityId);
-		if (entity != null && entity.isAlive()) {
-			return entity;
-		}
-		if (entity != null && !entity.isAlive()) {
-			TRACKED_ENTITIES.remove(entityId);
-		}
-		return null;
-	}
-
-	private static AbstractArrow findArrow(MinecraftServer server, UUID arrowId) {
-		Entity entity = findEntity(server, arrowId);
-		return entity instanceof AbstractArrow arrow ? arrow : null;
-	}
-
-	private static void releaseHomingArrow(UUID arrowId, AbstractArrow arrow) {
-		HOMING_ARROWS.remove(arrowId);
-		if (arrow != null && arrow.isAlive()) {
-			arrow.setNoGravity(false);
-		}
-	}
-
 	private static void trackManagedMobArrow(AbstractArrow arrow, MinecraftServer server) {
-		if (arrow == null) {
-			return;
-		}
-		MANAGED_MOB_ARROWS.put(arrow.getUUID(), MOB_ARROW_LIFETIME_TICKS);
-		requestRuntimeProcessing(server, resolveRuntimeProcessingInterval(server));
+		HelperProjectileManager.trackManagedProjectile(arrow);
 	}
 
 	static void trackManagedMobArrowForRuntime(AbstractArrow arrow, MinecraftServer server) {
 		trackManagedMobArrow(arrow, server);
-	}
-
-	private static void removeArrowRuntimeState(UUID arrowId) {
-		if (arrowId == null) {
-			return;
-		}
-		HOMING_ARROWS.remove(arrowId);
-		FIXED_ARROW_DAMAGE.remove(arrowId);
-		MANAGED_MOB_ARROWS.remove(arrowId);
-		INVULNERABILITY_BYPASS_ARROWS.remove(arrowId);
 	}
 
 	private record PendingZombieReplacement(EntityType<?> replacementType, EntitySpawnReason reason) {}
@@ -2694,8 +2548,6 @@ public final class MobEntityManager {
 		return identifier == null ? "unknown" : identifier.toString();
 	}
 
-	private record HomingArrowState(UUID targetUuid, double speed, int remainingTicks) {}
 	private record WeightedVariant(String key, double weight) {}
 
 }
-
