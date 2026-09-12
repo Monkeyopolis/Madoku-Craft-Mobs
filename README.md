@@ -1,19 +1,34 @@
-## Madoku Craft: Mobs
+## Overview:
 
-Madoku Craft: Mobs is a configurable mob system that can be tinkered with.
-This is perfect for users that love to customize the game to their needs.
-This can be done through the MOD's config JSON file.
+Madoku Craft: Mobs allows a mob's stats to scale through time, biome, and structure.
+It also modifies and adds certain mechanics to certain mobs.
 
-## Dependencies
+## Dependencies:
 
-This MOD requires Fabric API and Madoku Craft API in order to function properly.
-This MOD uses Madoku Craft API's JSON, Debug, and Tick systems.
+- Fabric API
+- Madoku Craft: Core
 
-## Implementation
+## Features:
 
-This MOD by default adjusts the stats of mobs.
-It also adds and removes certain behaviors from mobs.
-Zombies no longer spawn reinforcements or spawn with equipment.
-Skeletons now uses a accuracy mechanic, which makes them either entirely miss, or score a guranteed hit.
-Creepers now have a chance to greif instead of always destroying blocks.
-There are many changed behaviors that you can customize via the CONFIG file.
+**Entities:**
+
+- You can customize a mob entity's stats, behaviors, and scaling.
+- You can also create new variants for mobs in the config files.
+
+**Regional Difficulty:**
+
+- Mobs scale based on the amount of time has passed in-game, the structure they spawned in, and the biome they spawned in.
+- Mob scaling affects their health, armor, movement speed, damage, and other stats.
+
+**World Difficulty:**
+
+- Mobs scale based on the world difficulty, which affects their health, armor, movement speed, damage, and other stats.
+- You can adjust the world difficulty in your world's difficulty setting, the mod is balanced around normal difficulty.
+
+**Special Behaviors:**
+
+- Skeletons have an accuracy mechanic, allowing them to miss or land a direct hit.
+- Creepers were adjusted to not greif based on chance.
+- Bees now search for crops in order to fertilize them.
+- Spiders were adjusted to be smaller, their size scales with regional and world difficulty.
+- Ranged drowned mobs also have an accuracy mechanic.
