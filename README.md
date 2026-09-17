@@ -20,7 +20,7 @@ It also modifies and adds certain mechanics to certain mobs.
 - Mobs scale based on the amount of time has passed in-game, the structure they spawned in, and the biome they spawned in.
 - Mob scaling affects their health, armor, movement speed, damage, and other stats.
 
-**World Dificulty:**
+**World Difficulty:**
 
 - Mobs scale based on the world difficulty, which affects their health, armor, movement speed, damage, and other stats.
 - You can adjust the world difficulty in your world's difficulty setting, the mod is balanced around normal difficulty.

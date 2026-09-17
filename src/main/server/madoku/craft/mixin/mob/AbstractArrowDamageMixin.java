@@ -27,7 +27,7 @@ public abstract class AbstractArrowDamageMixin {
 	private boolean madokuCraft$applyFixedArrowDamage(Entity entity, DamageSource source, float originalDamage) {
 		AbstractArrow arrow = (AbstractArrow) (Object) this;
 		if (HelperProjectileAPIManager.shouldBypassInvulnerability(arrow) && entity instanceof LivingEntity livingEntity) {
-			livingEntity.invulnerableTime = 0;
+			livingEntity.setInvulnerableTime(0);
 			livingEntity.hurtTime = 0;
 		}
 		float resolvedDamage = HelperProjectileAPIManager.resolveProjectileDamageOverride(arrow, originalDamage);
