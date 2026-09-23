@@ -49,6 +49,7 @@ import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.entity.monster.zombie.ZombieVillager;
 
 import java.util.ArrayList;
@@ -300,19 +301,26 @@ public final class MobEntityManager {
 		}
 
 		String storedVariant = readStoredVariantKeyForRuntime(entity, fileKey);
-		if (storedVariant.isBlank()) {
-			String selectedVariant = selectWeightedVariantKey(
-				fileRoot,
-				random,
-				normalizedKey -> false,
-				variantRoot -> resolveVariantSpawnWeight(variantRoot, 0.0D)
-			);
-			String resolvedVariant = selectedVariant.isBlank()
-				? EntityConfigManager.resolvePrimaryVariantKeyForRuntime(fileRoot)
-				: selectedVariant;
-			if (!resolvedVariant.isBlank()) {
-				writeStoredVariantKeyForRuntime(entity, fileKey, resolvedVariant);
+		if (!storedVariant.isBlank()) {
+			JsonObject storedVariantRoot = EntityConfigManager.resolveTopLevelVariant(fileRoot, storedVariant);
+			if (isConfiguredSpawnFilterAllowed(entity, storedVariantRoot)) {
+				return;
 			}
+		}
+
+		String selectedVariant = selectWeightedVariantKey(
+			fileRoot,
+			random,
+			normalizedKey -> false,
+			variantRoot -> isConfiguredSpawnFilterAllowed(entity, variantRoot)
+				? resolveVariantSpawnWeight(variantRoot, 0.0D)
+				: 0.0D
+		);
+		String resolvedVariant = selectedVariant.isBlank()
+			? EntityConfigManager.resolvePrimaryVariantKeyForRuntime(fileRoot)
+			: selectedVariant;
+		if (!resolvedVariant.isBlank()) {
+			writeStoredVariantKeyForRuntime(entity, fileKey, resolvedVariant);
 		}
 	}
 
@@ -2184,6 +2192,51 @@ public final class MobEntityManager {
 			summed += Math.max(0.0D, readSpawnRuleDouble(nestedVariant, MobConfigManager.FIELD_SPAWN_WEIGHT, 0.0D));
 		}
 		return summed > 0.0D ? summed : fallback;
+	}
+
+	private static boolean isConfiguredSpawnFilterAllowed(LivingEntity entity, JsonObject variantRoot) {
+		String filter = resolveConfiguredSpawnFilter(variantRoot);
+		if (!MobConfigManager.SPAWN_FILTER_SURFACE.equals(filter)) {
+			return true;
+		}
+		if (entity == null || !(entity.level() instanceof ServerLevel serverLevel)) {
+			return true;
+		}
+		BlockPos position = entity.blockPosition();
+		int surfaceY = serverLevel.getHeight(
+			Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+			position.getX(),
+			position.getZ()
+		);
+		return position.getY() == surfaceY;
+	}
+
+	private static String resolveConfiguredSpawnFilter(JsonObject variantRoot) {
+		JsonObject spawnRules = readSpawnRulesRoot(variantRoot);
+		String configuredFilter = normalizeKey(readString(spawnRules, MobConfigManager.FIELD_SPAWN_FILTER, ""));
+		if (!configuredFilter.isBlank()) {
+			return configuredFilter;
+		}
+		return hasEnabledJockeySpawnRule(variantRoot)
+			? MobConfigManager.SPAWN_FILTER_SURFACE
+			: "";
+	}
+
+	private static boolean hasEnabledJockeySpawnRule(JsonObject variantRoot) {
+		if (variantRoot == null || variantRoot.entrySet().isEmpty()) {
+			return false;
+		}
+		JsonObject spawnRules = readSpawnRulesRoot(variantRoot);
+		JsonObject jockey = readObject(spawnRules, MobConfigManager.FIELD_MOB_JOCKEY);
+		if (readBoolean(jockey, MobConfigManager.FIELD_ENABLED, false)) {
+			return true;
+		}
+		for (JsonObject nestedVariant : collectNestedVariantRoots(variantRoot).values()) {
+			if (hasEnabledJockeySpawnRule(nestedVariant)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static JsonObject resolveBeeRoot(LivingEntity entity, JsonObject beeFileRoot, RandomSource random, boolean spawnContext) {

@@ -80,6 +80,8 @@ public final class MobConfigManager {
 	public static final String FIELD_TRIDENT_ATTACK = "trident-attack";
 	public static final String FIELD_BOW_ATTACK = "bow-attack";
 	public static final String FIELD_SPAWN_WEIGHT = "spawn-weight";
+	public static final String FIELD_SPAWN_FILTER = "spawn-filter";
+	public static final String SPAWN_FILTER_SURFACE = "surface";
 	public static final String FIELD_RANGED_DAMAGE = "ranged-damage";
 	public static final String FIELD_EXPLOSION_POWER = "explosion-power";
 	public static final String FIELD_ATTACK_INTERVAL = "attack-interval";
@@ -626,6 +628,7 @@ public final class MobConfigManager {
 		mount.addProperty(FIELD_MOB_ID, JSONAPIManager.normalizeRegistryIdentifierForJson(mountType));
 		jockey.add(FIELD_JOCKEY_MOUNT, mount);
 		JsonObject rules = buildSpawnRules(weight);
+		rules.addProperty(FIELD_SPAWN_FILTER, SPAWN_FILTER_SURFACE);
 		rules.add(FIELD_MOB_JOCKEY, jockey);
 		return rules;
 	}
@@ -718,8 +721,10 @@ public final class MobConfigManager {
 			buildSpawnRules(10.0D), new JsonObject(), new JsonObject());
 		addMobBabyComponent(baby, true);
 		addNestedVariant(variant, FIELD_BABY_GROUP, baby);
+		JsonObject huskJockeyRules = buildSpawnRules(10.0D, "minecraft-equipment-husk.json");
+		huskJockeyRules.addProperty(FIELD_SPAWN_FILTER, SPAWN_FILTER_SURFACE);
 		JsonObject huskJockey = buildVariant(
-			new JsonObject(), buildSpawnRules(10.0D, "minecraft-equipment-husk.json"), new JsonObject(), new JsonObject());
+			new JsonObject(), huskJockeyRules, new JsonObject(), new JsonObject());
 		addNestedVariant(huskJockey, FIELD_ADULT_GROUP, buildVariant(
 			new JsonObject(),
 			buildJockeySpawnRules(
@@ -797,8 +802,10 @@ public final class MobConfigManager {
 			buildGoals("hurt-by-target", "target-player", "melee-attack")
 		);
 		addZombieAgeVariants(variant);
+		JsonObject zombieJockeyRules = buildSpawnRules(10.0D, "minecraft-equipment-zombie.json");
+		zombieJockeyRules.addProperty(FIELD_SPAWN_FILTER, SPAWN_FILTER_SURFACE);
 		JsonObject zombieJockey = buildVariant(
-			new JsonObject(), buildSpawnRules(10.0D, "minecraft-equipment-zombie.json"), new JsonObject(), new JsonObject());
+			new JsonObject(), zombieJockeyRules, new JsonObject(), new JsonObject());
 		addNestedVariant(zombieJockey, FIELD_ADULT_GROUP, buildVariant(
 			new JsonObject(), buildJockeySpawnRules(90.0D, "minecraft:zombie", "minecraft:stone_spear", "minecraft:zombie_horse"), new JsonObject(), new JsonObject()));
 		JsonObject zombieJockeyBaby = buildVariant(
