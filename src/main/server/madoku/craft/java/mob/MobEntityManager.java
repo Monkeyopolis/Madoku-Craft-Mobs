@@ -53,7 +53,6 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.entity.monster.zombie.ZombieVillager;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -81,8 +80,8 @@ public final class MobEntityManager {
 
 	private static final Map<UUID, EntitySpawnReason> PENDING_CAVE_SPIDER_REPLACEMENTS = new ConcurrentHashMap<>();
 	private static final Map<UUID, PendingZombieReplacement> PENDING_ZOMBIE_REPLACEMENTS = new ConcurrentHashMap<>();
-	private static final Map<UUID, Entity> TRACKED_BEES = new HashMap<>();
-	private static final Map<UUID, Entity> TRACKED_AGEABLE_MOBS = new HashMap<>();
+	private static final Map<UUID, Entity> TRACKED_BEES = new ConcurrentHashMap<>();
+	private static final Map<UUID, Entity> TRACKED_AGEABLE_MOBS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Boolean> CONFIGURED_MOB_BABY_STATES = new ConcurrentHashMap<>();
 	private static final java.util.Set<UUID> APPLIED_SPAWN_OVERRIDES = ConcurrentHashMap.newKeySet();
 
