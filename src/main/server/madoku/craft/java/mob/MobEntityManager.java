@@ -142,7 +142,7 @@ public final class MobEntityManager {
 		long now = Math.max(0L, madoku.craft.java.core.time.TimeAPIManager.getGameplayTicks());
 		if (nextRuntimeTick != Long.MIN_VALUE && now < nextRuntimeTick) return;
 		nextRuntimeTick = now + Math.max(1L, resolveRuntimeProcessingInterval(server));
-		EntityBehaviorsManager.BeeBehavior.tickRuntime(server, TRACKED_BEES.values(), true,
+		EntityBehaviorsManager.BeeBehavior.tickRuntime(server, new ArrayList<>(TRACKED_BEES.values()), true,
 			isMobFileEnabled(MobConfigManager.FILE_BEE));
 		tickConfiguredMobBabyStates();
 	}
@@ -1424,7 +1424,7 @@ public final class MobEntityManager {
 
 	private static boolean tickConfiguredMobBabyStates() {
 		boolean active = false;
-		for (Entity entity : TRACKED_AGEABLE_MOBS.values()) {
+		for (Entity entity : new ArrayList<>(TRACKED_AGEABLE_MOBS.values())) {
 			if (!(entity instanceof AgeableMob ageableMob)
 				|| !(entity instanceof LivingEntity livingEntity)
 				|| !entity.isAlive()
