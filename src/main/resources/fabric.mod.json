@@ -8,7 +8,8 @@
   "license": "CC0-1.0",
   "environment": "*",
   "entrypoints": {
-    "main": ["madoku.craft.java.mob.MadokuMobsInitializer"]
+    "main": ["madoku.craft.java.mob.MadokuMobsInitializer"],
+    "client": ["madoku.craft.java.mob.MadokuMobsClientInitializer"]
   },
   "mixins": ["madoku-craft-mobs.mixins.json"],
   "depends": {

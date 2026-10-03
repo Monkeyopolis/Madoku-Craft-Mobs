@@ -32,7 +32,12 @@
     "mob.ThrownTridentGroundClearMixin",
     "mob.VanillaSpiderJockeyMixin",
     "mob.VanillaZombieJockeyMixin",
+    "mob.ZombieSpawnAttributesMixin",
     "mob.WitherSkeletonWitherEffectMixin"
+  ],
+  "client": [
+    "mob.LivingEntityRenderStateMixin",
+    "mob.LivingEntityRendererMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

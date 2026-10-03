@@ -1847,6 +1847,18 @@ public final class MobEntityManager {
 		);
 	}
 
+	public static boolean shouldOverrideVanillaZombieSpawnAttributes(Zombie zombie) {
+		if (zombie == null || zombie.getType() != MobEntityTypeAPIManager.ZOMBIE || !MobConfigManager.isEnabled()) {
+			return false;
+		}
+		if (!isMobFileEnabledForRuntime(MobConfigManager.FILE_ZOMBIE)) {
+			return false;
+		}
+		JsonObject fileConfigRoot = resolveMobFileConfigRootForRuntime(MobConfigManager.FILE_ZOMBIE);
+		return readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_COMPONENTS, true)
+			|| readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
+	}
+
 	private static boolean shouldApplyConfiguredSpawnRulesForRuntime(LivingEntity entity) {
 		if (entity == null || !MobConfigManager.isEnabled()) {
 			return false;

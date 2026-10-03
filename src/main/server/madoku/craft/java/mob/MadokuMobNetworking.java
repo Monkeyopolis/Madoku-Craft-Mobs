@@ -12,6 +12,7 @@ final class MadokuMobNetworking {
 	static void initialize() {
 		if (initialized) return;
 		PayloadTypeRegistry.clientboundPlay().register(MobPayloadManager.TYPE, MobPayloadManager.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(MobIndicatorPayloadManager.TYPE, MobIndicatorPayloadManager.CODEC);
 		initialized = true;
 	}
 }

@@ -12,6 +12,7 @@ public final class MadokuMobManager {
 		MobConfigManager.initialize();
 		MobWorldDifficultyManager.initialize();
 		MobRegionalDifficultyManager.initialize();
+		MobIndicatorManager.initialize();
 		MobEntityManager.initialize();
 	}
 
@@ -22,15 +23,18 @@ public final class MadokuMobManager {
 		MobConfigManager.initialize();
 		WorldDifficultyConfigManager.initialize();
 		MobRegionalDifficultyManager.onServerStarted(server);
+		MobIndicatorManager.onServerStarted(server);
 		MobEntityManager.onServerStarted(server);
 	}
 
 	public static void onServerTick(MinecraftServer server) {
 		MobRegionalDifficultyManager.onServerTick(server);
+		MobIndicatorManager.onServerTick(server);
 		MobEntityManager.onServerTick(server);
 	}
 
 	public static void onServerStopped() {
+		MobIndicatorManager.onServerStopped();
 		MobEntityManager.onServerStopped();
 		MobRegionalDifficultyManager.onServerStopped();
 		MobWorldDifficultyManager.onServerStopped();
