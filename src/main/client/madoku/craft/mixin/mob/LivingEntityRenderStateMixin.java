@@ -3,17 +3,19 @@ package madoku.craft.mixin.mob;
 import java.util.UUID;
 
 import madoku.craft.java.mob.MobIndicatorRenderStateAccess;
+import madoku.craft.java.mob.SpiderVariantRenderStateAccess;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 @Mixin(LivingEntityRenderState.class)
-public abstract class LivingEntityRenderStateMixin implements MobIndicatorRenderStateAccess {
+public abstract class LivingEntityRenderStateMixin implements MobIndicatorRenderStateAccess, SpiderVariantRenderStateAccess {
 	@Unique private boolean madokuCraft$mobIndicatorManaged;
 	@Unique private UUID madokuCraft$mobIndicatorEntityUuid;
 	@Unique private float madokuCraft$mobIndicatorHealth;
 	@Unique private float madokuCraft$mobIndicatorMaxHealth;
 	@Unique private float madokuCraft$mobIndicatorArmor;
+	@Unique private String madokuCraft$spiderVariantKey = "";
 
 	@Override
 	public void madokuCraftMobIndicator$setManaged(boolean managed) {
@@ -63,5 +65,15 @@ public abstract class LivingEntityRenderStateMixin implements MobIndicatorRender
 	@Override
 	public float madokuCraftMobIndicator$getArmor() {
 		return madokuCraft$mobIndicatorArmor;
+	}
+
+	@Override
+	public void madokuCraft$setVariantKey(String variantKey) {
+		madokuCraft$spiderVariantKey = variantKey == null ? "" : variantKey;
+	}
+
+	@Override
+	public String madokuCraft$getVariantKey() {
+		return madokuCraft$spiderVariantKey;
 	}
 }

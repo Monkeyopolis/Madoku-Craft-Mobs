@@ -3703,9 +3703,109 @@ public final class EntityBehaviorsManager {
 		}
 	}
 
-	public static final class SpiderBehavior {
-		private static final String SPIDER_VARIANT_TAG_PREFIX = "madoku-craft.spider.variant:";
+	/** Generic parent/child family behavior shared by every configured mob type. */
+	public static final class FamilyBehavior {
+		private FamilyBehavior() {
+		}
 
+		public static void applySpawnOverrides(
+			Mob mother,
+			ServerLevelAccessor world,
+			EntitySpawnReason spawnReason
+		) {
+			if (mother == null || world == null || spawnReason == null || !MobEntityManager.isEnabled()
+				|| spawnReason == EntitySpawnReason.JOCKEY
+				|| MobEntityManager.isBabyVariantEntityForRuntime(mother)) {
+				return;
+			}
+			String fileKey = MobEntityManager.resolveRuntimeMobFileKey(mother);
+			if (fileKey.isBlank()
+				|| !MobEntityManager.isMobFileEnabledForRuntime(fileKey)
+				|| !readBoolean(
+					MobEntityManager.resolveMobFileConfigRootForRuntime(fileKey),
+					MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES,
+					true
+				)) {
+				return;
+			}
+
+			JsonObject variant = MobEntityManager.resolveConfiguredEntityVariantForRuntime(mother);
+			JsonObject spawnRules = readObject(variant, MobConfigManager.FIELD_SPAWN_RULES);
+			JsonObject familySpawn = readObject(spawnRules, MobConfigManager.FIELD_SPAWN_MOTHER);
+			if (familySpawn.entrySet().isEmpty()
+				|| !readBoolean(familySpawn, MobConfigManager.FIELD_ENABLED, false)) {
+				return;
+			}
+
+			double chance = Mth.clamp(readDouble(familySpawn, MobConfigManager.FIELD_CHANCE, 0.0D), 0.0D, 1.0D);
+			if (world.getRandom().nextDouble() >= chance) {
+				return;
+			}
+
+			JsonObject amount = readObject(familySpawn, MobConfigManager.FIELD_AMOUNT);
+			int minimum = Math.max(0, (int) Math.floor(readDouble(amount, MobConfigManager.FIELD_MINIMUM, 0.0D)));
+			int maximum = Math.max(minimum, (int) Math.floor(readDouble(amount, MobConfigManager.FIELD_MAXIMUM, minimum)));
+			int count = minimum + (maximum > minimum
+				? world.getRandom().nextInt(maximum - minimum + 1)
+				: 0);
+			ServerLevel level = world.getLevel();
+			String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(mother);
+			for (int index = 0; index < count; index++) {
+				Entity childEntity = mother.getType().create(level, EntitySpawnReason.BREEDING);
+				if (!(childEntity instanceof Mob child)) {
+					continue;
+				}
+				double angle = world.getRandom().nextDouble() * Math.PI * 2.0D;
+				double radius = 1.0D + world.getRandom().nextDouble() * 1.5D;
+				child.absSnapTo(
+					mother.getX() + Math.cos(angle) * radius,
+					mother.getY(),
+					mother.getZ() + Math.sin(angle) * radius,
+					world.getRandom().nextFloat() * 360.0F,
+					0.0F
+				);
+				if (fileKey.isBlank() || variantKey.isBlank()) {
+					child.discard();
+					continue;
+				}
+				MobEntityManager.writeStoredVariantKeyForRuntime(child, fileKey, variantKey);
+				MobEntityManager.writeNestedVariantTag(child, MobConfigManager.FIELD_BABY_GROUP);
+				MobEntityManager.setBabyVariantEntity(child, true);
+				MobEntityManager.writeParentTag(child, mother.getUUID());
+				child.setPersistenceRequired();
+				level.addFreshEntity(child);
+			}
+		}
+
+		private static JsonObject readObject(JsonObject parent, String key) {
+			if (parent == null || key == null || key.isBlank()) {
+				return new JsonObject();
+			}
+			JsonElement element = parent.get(key);
+			return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+		}
+
+		private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean()
+				? element.getAsBoolean() : fallback;
+		}
+
+		private static double readDouble(JsonObject root, String key, double fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber()) {
+				return fallback;
+			}
+			try {
+				double value = element.getAsDouble();
+				return Double.isFinite(value) ? value : fallback;
+			} catch (RuntimeException ignored) {
+				return fallback;
+			}
+		}
+	}
+
+	public static final class SpiderBehavior {
 		private SpiderBehavior() {
 		}
 
@@ -3727,39 +3827,14 @@ public final class EntityBehaviorsManager {
 				return false;
 			}
 
-			JsonObject fileRoot = MobEntityManager.resolveMobFileConfigRootForRuntime(fileKey);
-			JsonObject spiderRoot = readMobRoot(fileRoot, fileKey);
-			boolean overrideSpawnRules = readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!overrideSpawnRules) {
-				clearSpiderVariantTag(spider);
-				return false;
-			}
-			if (spiderRoot.entrySet().isEmpty()) {
-				clearSpiderVariantTag(spider);
-				return false;
-			}
-
-			JsonObject defaultGroup = EntityConfigManager.resolvePrimaryVariantOnly(fileRoot);
-			if (defaultGroup.entrySet().isEmpty()) {
-				clearSpiderVariantTag(spider);
-				return false;
-			}
-
-			String storedVariant = readStoredSpiderVariantKey(spider);
-			if (!storedVariant.isBlank()) {
-				JsonObject storedVariantRoot = resolveSpiderVariantRootByKey(fileRoot, storedVariant);
-				if (storedVariantRoot.entrySet().isEmpty()) {
-					return false;
-				}
-				JsonObject effectiveStoredVariantRoot = MobEntityManager.resolveVariantGroupRoot(defaultGroup, storedVariantRoot);
-				clearExistingSkeletonPassengers(spider);
-				return applyConfiguredSpiderVariantOutcome(spider, world, difficulty, spawnReason, effectiveStoredVariantRoot);
-			}
-
-			// The common finalizeSpawn HEAD hook has already selected and stored the
-			// top-level variant. An empty key means the primary/default variant.
 			clearExistingSkeletonPassengers(spider);
-			return applyConfiguredSpiderVariantOutcome(spider, world, difficulty, spawnReason, defaultGroup);
+			return applyConfiguredSpiderVariantOutcome(
+				spider,
+				world,
+				difficulty,
+				spawnReason,
+				MobEntityManager.resolveConfiguredEntityVariantForRuntime(spider)
+			);
 		}
 
 		private static boolean applyConfiguredSpiderVariantOutcome(
@@ -3784,7 +3859,6 @@ public final class EntityBehaviorsManager {
 					return true;
 				}
 			}
-
 			return false;
 		}
 
@@ -3800,67 +3874,6 @@ public final class EntityBehaviorsManager {
 			return readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
 		}
 
-		private static String readStoredSpiderVariantKey(Spider spider) {
-			if (spider == null) {
-				return "";
-			}
-			for (String tag : spider.entityTags()) {
-				if (tag == null || !tag.startsWith(SPIDER_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(SPIDER_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void clearSpiderVariantTag(Spider spider) {
-			if (spider == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : spider.entityTags()) {
-				if (tag != null && tag.startsWith(SPIDER_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				spider.removeTag(existing);
-			}
-		}
-
-		private static boolean isReservedSpiderGroupKey(String normalizedKey) {
-			if (normalizedKey == null || normalizedKey.isBlank()) {
-				return true;
-			}
-			return normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_ENABLED))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_OVERRIDE_COMPONENTS))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_OVERRIDE_BEHAVIORS))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_OVERRIDE_GOALS))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_CUSTOM_MOB_DROPS))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_WORLD_DIFFICULTY_SCALING))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_REGIONAL_DIFFICULTY_SCALING_NEW))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_MOB_COMPONENTS))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_SPAWN_RULES))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_MOB_BEHAVIORS))
-				|| normalizedKey.equals(normalizeKey(MobConfigManager.FIELD_MOB_GOALS))
-				|| normalizedKey.equals(normalizeKey("spider-spawn-weight"))
-				|| normalizedKey.equals(normalizeKey("cave-spider-spawn-weight"))
-				|| normalizedKey.equals(normalizeKey("spider-jockey-spawn-weight"));
-		}
-
-		private static JsonObject resolveSpiderVariantRootByKey(JsonObject spiderRoot, String variantKey) {
-			return MobEntityManager.resolveVariantRootByKey(
-				spiderRoot,
-				variantKey,
-				SpiderBehavior::isReservedSpiderGroupKey
-			);
-		}
-
 		private static void clearExistingSkeletonPassengers(Spider spider) {
 			for (Entity passenger : new ArrayList<>(spider.getPassengers())) {
 				if (passenger.getType() == MobEntityTypeAPIManager.SKELETON) {
@@ -3868,13 +3881,6 @@ public final class EntityBehaviorsManager {
 					passenger.discard();
 				}
 			}
-		}
-
-		private static JsonObject readMobRoot(JsonObject fileRoot, String fileKey) {
-			if (fileRoot == null || fileKey == null || fileKey.isBlank()) {
-				return new JsonObject();
-			}
-			return EntityConfigManager.resolvePrimaryVariant(fileRoot);
 		}
 
 		private static JsonObject readObject(JsonObject parent, String key) {
@@ -3891,10 +3897,6 @@ public final class EntityBehaviorsManager {
 			}
 			JsonElement element = root.get(key);
 			return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean() ? element.getAsBoolean() : fallback;
-		}
-
-		private static String normalizeKey(String value) {
-			return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
 		}
 
 	}

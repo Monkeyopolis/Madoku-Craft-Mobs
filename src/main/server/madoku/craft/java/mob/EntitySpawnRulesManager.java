@@ -38,6 +38,7 @@ public final class EntitySpawnRulesManager {
 		} else if (mob instanceof Zombie zombie) {
 			MobEntityManager.applyZombieSpawnOverrides(zombie, world, difficulty, spawnReason);
 		}
+		EntityBehaviorsManager.FamilyBehavior.applySpawnOverrides(mob, world, spawnReason);
 		// Apply the selected configuration after the behavior hook has selected
 		// and stored the variant, while preserving vanilla non-jockey initialization.
 		if (MobEntityManager.shouldApplyConfiguredComponentsForRuntime(mob)) {

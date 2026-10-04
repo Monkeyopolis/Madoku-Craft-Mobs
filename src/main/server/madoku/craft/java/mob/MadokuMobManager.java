@@ -10,6 +10,7 @@ public final class MadokuMobManager {
 	public static void initialize() {
 		MadokuMobNetworking.initialize();
 		MobConfigManager.initialize();
+		MobVariantAppearanceManager.initialize();
 		MobWorldDifficultyManager.initialize();
 		MobRegionalDifficultyManager.initialize();
 		MobIndicatorManager.initialize();

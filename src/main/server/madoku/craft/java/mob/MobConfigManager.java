@@ -60,6 +60,10 @@ public final class MobConfigManager {
 	public static final String FIELD_KNOCKBACK_RESISTANCE = "knockback-resistance";
 	public static final String FIELD_SCALE = "scale";
 	public static final String FIELD_EXPERIENCE_DROP = "experience-drop";
+	public static final String FIELD_ENTITY_TYPE = "entity-type";
+	public static final String ENTITY_TYPE_MOB = "mob";
+	public static final String ENTITY_TYPE_HOSTILE = "hostile";
+	public static final String ENTITY_TYPE_NEUTRAL = "neutral";
 
 	public static final String FILE_CREEPER = "creeper";
 	public static final String FILE_SKELETON = "skeleton";
@@ -81,6 +85,13 @@ public final class MobConfigManager {
 	public static final String FIELD_BOW_ATTACK = "bow-attack";
 	public static final String FIELD_SPAWN_WEIGHT = "spawn-weight";
 	public static final String FIELD_SPAWN_FILTER = "spawn-filter";
+	public static final String FIELD_VARIANT_APPEARANCE = "variant-appearance";
+	public static final String FIELD_APPEARANCE_TEXTURE = "texture";
+	public static final String FIELD_APPEARANCE_EYES = "eyes";
+	public static final String FIELD_APPEARANCE_PARTICLES = "particles";
+	public static final String FIELD_APPEARANCE_PARTICLE_TYPE = "type";
+	public static final String FIELD_APPEARANCE_PARTICLE_COLOR = "color";
+	public static final String FIELD_APPEARANCE_PARTICLE_SCALE = "scale";
 	public static final String SPAWN_FILTER_SURFACE = "surface";
 	public static final String FIELD_RANGED_DAMAGE = "ranged-damage";
 	public static final String FIELD_EXPLOSION_POWER = "explosion-power";
@@ -88,6 +99,12 @@ public final class MobConfigManager {
 	public static final String FIELD_ATTACK_ACCURACY = "attack-accuracy";
 	public static final String FIELD_CHARGE_INTERVAL = "charge-interval";
 	public static final String FIELD_SPAWN_RULES = "mob-spawn-rules";
+	/** Standard parent-family spawn rule. */
+	public static final String FIELD_SPAWN_MOTHER = "spawn-mother";
+	public static final String FIELD_CHANCE = "chance";
+	public static final String FIELD_AMOUNT = "amount";
+	public static final String FIELD_MINIMUM = "minimum";
+	public static final String FIELD_MAXIMUM = "maximum";
 	public static final String FIELD_MOB_COMPONENTS = "mob-components";
 	public static final String FIELD_MOB_BABY = "mob-baby";
 	public static final String FIELD_AGEABLE = "ageable";
@@ -100,6 +117,14 @@ public final class MobConfigManager {
 	public static final String FIELD_WEAPON_DAMAGE = "weapon-damage";
 	public static final String FIELD_MOB_BEHAVIORS = "mob-behaviors";
 	public static final String FIELD_MOB_GOALS = "mob-goals";
+	public static final String FIELD_TARGET_PLAYER = "target-player";
+	public static final String FIELD_CONDITIONS = "conditions";
+	public static final String FIELD_CONDITION = "condition";
+	public static final String FIELD_DISTANCE = "distance";
+	public static final String FIELD_SPEED = "speed";
+	public static final String FIELD_FOLLOW_PARENT = "follow-parent";
+	public static final String CONDITION_BABY_NEARBY = "baby-nearby";
+	public static final String FIELD_PROTECT_PARENT_WHEN_HURT = "protect-parent-when-hurt";
 	public static final String FIELD_RETALIATE_WHEN_HURT = "retaliate-when-hurt";
 	public static final String FIELD_CALLS_REINFORCEMENTS_WHEN_HURT = "calls-reinforcements-when-hurt";
 	public static final String FIELD_POLLINATE_CROPS = "pollinate-crops";
@@ -466,7 +491,7 @@ public final class MobConfigManager {
 	}
 
 	private static JsonObject buildEntityVariantDefaults(String key) {
-		return switch (key) {
+		JsonObject defaults = switch (key) {
 			case FILE_BEE -> buildBeeDefaults();
 			case FILE_BOGGED -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:poison", "minecraft-equipment-bogged.json", "minecraft-entities-bogged.json", "bogged-jockey");
 			case FILE_CAVE_SPIDER -> buildCaveSpiderVariantDefaults();
@@ -485,6 +510,42 @@ public final class MobConfigManager {
 			case FILE_ZOMBIE_VILLAGER -> buildZombieVillagerVariantDefaults();
 			default -> buildVariant(new JsonObject(), new JsonObject(), new JsonObject(), new JsonObject());
 		};
+		addDefaultEntityTypes(defaults, key);
+		return defaults;
+	}
+
+	private static void addDefaultEntityTypes(JsonObject root, String fileKey) {
+		addDefaultEntityTypes(root, fileKey, "");
+	}
+
+	private static void addDefaultEntityTypes(JsonObject root, String fileKey, String variantKey) {
+		if (root == null || fileKey == null || fileKey.isBlank()) {
+			return;
+		}
+		JsonElement componentsElement = root.get(FIELD_MOB_COMPONENTS);
+		if (componentsElement != null && componentsElement.isJsonObject()) {
+			JsonObject components = componentsElement.getAsJsonObject();
+			if (!components.has(FIELD_ENTITY_TYPE)) {
+				JsonArray entityTypes = new JsonArray();
+				entityTypes.add(fileKey);
+				entityTypes.add(ENTITY_TYPE_MOB);
+				entityTypes.add(FILE_BEE.equals(fileKey) || FILE_HAG.equals(fileKey)
+					|| (FILE_SPIDER.equals(fileKey)
+						&& ("albino-spider".equals(variantKey) || FIELD_ADULT_GROUP.equals(variantKey) || FIELD_BABY_GROUP.equals(variantKey)))
+					? ENTITY_TYPE_NEUTRAL
+					: ENTITY_TYPE_HOSTILE);
+				components.add(FIELD_ENTITY_TYPE, entityTypes);
+			}
+		}
+		for (Map.Entry<String, JsonElement> entry : root.asMap().entrySet()) {
+			JsonElement value = entry.getValue();
+			if (value != null && value.isJsonObject()) {
+				String childVariantKey = EntityConfigManager.isVariantKey(entry.getKey())
+					? entry.getKey()
+					: variantKey;
+				addDefaultEntityTypes(value.getAsJsonObject(), fileKey, childVariantKey);
+			}
+		}
 	}
 
 	private static JsonObject buildVariant(JsonObject components, JsonObject spawnRules, JsonObject behaviors, JsonObject goals) {
@@ -764,9 +825,9 @@ public final class MobConfigManager {
 
 	private static JsonObject buildSpiderVariantDefaults() {
 		JsonObject variant = buildVariant(
-			buildComponents(16.0D, null, 4.0D, 0.30D, null, null, null, 0.5D, 7, null, null, null, null,
+			buildComponents(16.0D, null, 4.0D, 0.30D, null, null, null, 0.7D, 7, null, null, null, null,
 				"minecraft-entities-spider.json", null, null, 0, null, null, null),
-			buildSpawnRules(80.0D), buildBehavior(false, false, false, true),
+			buildSpawnRules(79.0D), buildBehavior(false, false, false, true),
 			buildGoals("hurt-by-target", "target-player", "melee-attack")
 		);
 		JsonObject alternative = new JsonObject();
@@ -775,7 +836,62 @@ public final class MobConfigManager {
 		JsonObject caveSpiderRules = buildSpawnRules(10.0D);
 		caveSpiderRules.add(FIELD_SPAWN_ALTERNATIVE_MOB, alternative);
 		variant.add("cave-spider", buildSpawnAlternativeVariant(caveSpiderRules));
-		variant.add("spider-jockey", buildVariant(new JsonObject(), buildJockeySpawnRules(10.0D, "minecraft:skeleton", "minecraft:bow", "minecraft:spider"), new JsonObject(), new JsonObject()));
+		variant.add("spider-jockey", buildVariant(
+			buildComponents(16.0D, null, 4.0D, 0.30D, null, null, null, 0.7D, 7, null, null, null, null,
+				"minecraft-entities-spider.json", null, null, 0, null, null, null),
+			buildJockeySpawnRules(10.0D, "minecraft:skeleton", "minecraft:bow", "minecraft:spider"),
+			buildBehavior(false, false, false, true),
+			buildGoals("hurt-by-target", "target-player", "melee-attack")));
+
+		JsonObject albinoAppearance = new JsonObject();
+		albinoAppearance.addProperty(FIELD_APPEARANCE_TEXTURE, "madoku-craft:textures/entity/spider/albino-spider.png");
+		albinoAppearance.addProperty(FIELD_APPEARANCE_EYES, "madoku-craft:textures/entity/spider/albino-spider-eyes.png");
+		JsonObject albinoParticles = new JsonObject();
+		albinoParticles.addProperty(FIELD_APPEARANCE_PARTICLE_TYPE, "minecraft:dust");
+		albinoParticles.addProperty(FIELD_APPEARANCE_PARTICLE_COLOR, "#FFF5F8");
+		albinoParticles.addProperty(FIELD_APPEARANCE_PARTICLE_SCALE, 0.65D);
+		albinoAppearance.add(FIELD_APPEARANCE_PARTICLES, albinoParticles);
+		JsonObject albinoRules = buildSpawnRules(1.0D);
+		albinoRules.add(FIELD_VARIANT_APPEARANCE, albinoAppearance);
+		JsonObject motherSpawn = new JsonObject();
+		motherSpawn.addProperty(FIELD_ENABLED, true);
+		motherSpawn.addProperty(FIELD_CHANCE, 0.5D);
+		JsonObject babyAmount = new JsonObject();
+		babyAmount.addProperty(FIELD_MINIMUM, 3);
+		babyAmount.addProperty(FIELD_MAXIMUM, 5);
+		motherSpawn.add(FIELD_AMOUNT, babyAmount);
+		albinoRules.add(FIELD_SPAWN_MOTHER, motherSpawn);
+
+		JsonObject albinoGoals = buildGoals("hurt-by-target", "target-player", "melee-attack");
+		JsonObject targetPlayer = albinoGoals.getAsJsonObject(FIELD_TARGET_PLAYER);
+		JsonArray targetConditions = new JsonArray();
+		JsonObject babyNearby = new JsonObject();
+		babyNearby.addProperty(FIELD_CONDITION, CONDITION_BABY_NEARBY);
+		babyNearby.addProperty(FIELD_DISTANCE, 4.0D);
+		targetConditions.add(babyNearby);
+		targetPlayer.add(FIELD_CONDITIONS, targetConditions);
+
+		JsonObject albino = buildVariant(
+			buildComponents(24.0D, 1.0D, 6.0D, 0.36D, null, null, 0.1D, 0.5D, 11, null, null, null, null,
+				"minecraft-entities-spider.json", null, null, 0, null, null, null),
+			albinoRules, buildBehavior(false, false, false, true), albinoGoals);
+		addNestedVariant(albino, FIELD_ADULT_GROUP,
+			buildVariant(new JsonObject(), buildSpawnRules(100.0D), new JsonObject(), new JsonObject()));
+		JsonObject babyGoals = buildGoals(FIELD_FOLLOW_PARENT);
+		JsonObject babyTargetPlayer = new JsonObject();
+		babyTargetPlayer.addProperty(FIELD_ENABLED, false);
+		babyGoals.add(FIELD_TARGET_PLAYER, babyTargetPlayer);
+		JsonObject baby = buildVariant(
+			buildComponents(12.0D, 0.0D, 3.0D, 0.24D, null, null, 0.0D, 0.25D, 3, null, null, null, null,
+				null, null, null, 0, null, null, null),
+			buildSpawnRules(0.0D), buildBehavior(false, false, false, false), babyGoals);
+		addMobBabyComponent(baby, true);
+		baby.getAsJsonObject(FIELD_MOB_COMPONENTS)
+			.getAsJsonObject(FIELD_MOB_BABY)
+			.getAsJsonObject(FIELD_AGEABLE)
+			.addProperty(FIELD_DURATION, 300.0D);
+		addNestedVariant(albino, FIELD_BABY_GROUP, baby);
+		variant.add("albino-spider", albino);
 		return variant;
 	}
 

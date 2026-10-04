@@ -6,6 +6,7 @@ import net.fabricmc.api.ClientModInitializer;
 public final class MadokuMobsClientInitializer implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		MobVariantClient.initialize();
 		MobIndicatorClient.initialize();
 	}
 }

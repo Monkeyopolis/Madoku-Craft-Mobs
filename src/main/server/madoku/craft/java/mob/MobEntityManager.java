@@ -29,6 +29,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.animal.bee.Bee;
 import net.minecraft.world.entity.ai.attributes.Attribute;
@@ -76,12 +77,16 @@ public final class MobEntityManager {
 	private static final String MOB_RUNTIME_ADAPTIVE_ID = "madoku-mob-runtime";
 	private static final double CREEPER_POWER_PER_DAMAGE = 0.2D;
 	private static final String NESTED_VARIANT_TAG_PREFIX = "madoku-craft.nested-variant:";
+	private static final String MOB_BABY_TAG = "madoku-craft.mob.baby";
+	private static final String MOB_PARENT_TAG_PREFIX = "madoku-craft.mob.parent:";
 	private static final String FIELD_FLYING_SPEED = MobConfigManager.FIELD_FLYING_SPEED;
 
 	private static final Map<UUID, EntitySpawnReason> PENDING_CAVE_SPIDER_REPLACEMENTS = new ConcurrentHashMap<>();
 	private static final Map<UUID, PendingZombieReplacement> PENDING_ZOMBIE_REPLACEMENTS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Entity> TRACKED_BEES = new ConcurrentHashMap<>();
 	private static final Map<UUID, Entity> TRACKED_AGEABLE_MOBS = new ConcurrentHashMap<>();
+	private static final Map<UUID, Mob> TRACKED_MOBS = new ConcurrentHashMap<>();
+	private static final Map<UUID, Integer> MOB_HURT_TIMESTAMPS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Boolean> CONFIGURED_MOB_BABY_STATES = new ConcurrentHashMap<>();
 	private static final java.util.Set<UUID> APPLIED_SPAWN_OVERRIDES = ConcurrentHashMap.newKeySet();
 
@@ -98,6 +103,9 @@ public final class MobEntityManager {
 			if (entity instanceof AgeableMob) {
 				TRACKED_AGEABLE_MOBS.put(entity.getUUID(), entity);
 			}
+			if (entity instanceof Mob mob) {
+				TRACKED_MOBS.put(entity.getUUID(), mob);
+			}
 			if (entity instanceof LivingEntity livingEntity && !MobFeatureAPIManager.isManagedPet(livingEntity)) {
 				boolean reappliedMobOverrides = applyLoadedEntityRules(livingEntity);
 				EntityComponentsManager.applyMobBabyComponent(livingEntity);
@@ -107,10 +115,18 @@ public final class MobEntityManager {
 				}
 				applyDifficultyScalingAfterMobOverrides(livingEntity, world, reappliedMobOverrides);
 			}
+			if (entity instanceof Spider spider) {
+				MobVariantNetworking.broadcast(world.getServer(), spider);
+			}
 		});
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
+			if (entity instanceof Spider spider) {
+				MobVariantNetworking.broadcast(world.getServer(), spider, "");
+			}
 			TRACKED_BEES.remove(entity.getUUID());
 			TRACKED_AGEABLE_MOBS.remove(entity.getUUID());
+			TRACKED_MOBS.remove(entity.getUUID());
+			MOB_HURT_TIMESTAMPS.remove(entity.getUUID());
 			EntityComponentsManager.invalidateMobBabySettings(entity.getUUID());
 			CONFIGURED_MOB_BABY_STATES.remove(entity.getUUID());
 			APPLIED_SPAWN_OVERRIDES.remove(entity.getUUID());
@@ -125,6 +141,8 @@ public final class MobEntityManager {
 		PENDING_ZOMBIE_REPLACEMENTS.clear();
 		TRACKED_BEES.clear();
 		TRACKED_AGEABLE_MOBS.clear();
+		TRACKED_MOBS.clear();
+		MOB_HURT_TIMESTAMPS.clear();
 		EntityComponentsManager.clearMobBabySettingsCache();
 		CONFIGURED_MOB_BABY_STATES.clear();
 		APPLIED_SPAWN_OVERRIDES.clear();
@@ -145,6 +163,7 @@ public final class MobEntityManager {
 		EntityBehaviorsManager.BeeBehavior.tickRuntime(server, new ArrayList<>(TRACKED_BEES.values()), true,
 			isMobFileEnabled(MobConfigManager.FILE_BEE));
 		tickConfiguredMobBabyStates();
+		tickConfiguredMobFamilies();
 	}
 
 	public static void onServerStopped() {
@@ -154,6 +173,8 @@ public final class MobEntityManager {
 		PENDING_ZOMBIE_REPLACEMENTS.clear();
 		TRACKED_BEES.clear();
 		TRACKED_AGEABLE_MOBS.clear();
+		TRACKED_MOBS.clear();
+		MOB_HURT_TIMESTAMPS.clear();
 		EntityComponentsManager.clearMobBabySettingsCache();
 		CONFIGURED_MOB_BABY_STATES.clear();
 		APPLIED_SPAWN_OVERRIDES.clear();
@@ -303,6 +324,7 @@ public final class MobEntityManager {
 		if (!storedVariant.isBlank()) {
 			JsonObject storedVariantRoot = EntityConfigManager.resolveTopLevelVariant(fileRoot, storedVariant);
 			if (isConfiguredSpawnFilterAllowed(entity, storedVariantRoot)) {
+				writeStoredVariantKeyForRuntime(entity, fileKey, storedVariant);
 				return;
 			}
 		}
@@ -889,8 +911,8 @@ public final class MobEntityManager {
 			if (spider.getType() == MobEntityTypeAPIManager.CAVE_SPIDER) {
 				return EntityBehaviorsManager.CaveSpiderBehavior.applyLoadedEntityOverrides(spider);
 			}
-			JsonObject root = fileMobRoot(MobConfigManager.FILE_SPIDER);
-			return isMobFileEnabled(MobConfigManager.FILE_SPIDER) && applyUniversalBaseStatsForRuntime(spider, root);
+			JsonObject variant = resolveConfiguredEntityVariantForRuntime(spider);
+			return isMobFileEnabled(MobConfigManager.FILE_SPIDER) && applyUniversalBaseStatsForRuntime(spider, variant);
 		}
 		if (entity instanceof AbstractSkeleton skeleton) {
 			if (skeleton.getType() == MobEntityTypeAPIManager.WITHER_SKELETON) {
@@ -1456,6 +1478,69 @@ public final class MobEntityManager {
 		return active;
 	}
 
+	private static void tickConfiguredMobFamilies() {
+		for (Mob parent : new ArrayList<>(TRACKED_MOBS.values())) {
+			if (parent == null || !parent.isAlive() || !(parent.level() instanceof ServerLevel)) {
+				continue;
+			}
+
+			if (isBabyVariantEntity(parent)) {
+				if (isConfiguredGoalEnabledForRuntime(parent, MobConfigManager.FIELD_FOLLOW_PARENT)) {
+					followConfiguredParent(parent);
+				}
+				continue;
+			}
+
+			int hurtTimestamp = parent.getLastHurtByMobTimestamp();
+			Integer previousTimestamp = MOB_HURT_TIMESTAMPS.put(parent.getUUID(), hurtTimestamp);
+			if (previousTimestamp != null && previousTimestamp == hurtTimestamp) {
+				continue;
+			}
+			LivingEntity attacker = parent.getLastHurtByMob();
+			if (attacker == null || !attacker.isAlive()) {
+				continue;
+			}
+			for (Mob child : TRACKED_MOBS.values()) {
+				if (child == null
+					|| child == parent
+					|| !child.isAlive()
+					|| !isBabyVariantEntity(child)
+					|| !isConfiguredBehaviorEnabledForRuntime(
+						child, MobConfigManager.FIELD_PROTECT_PARENT_WHEN_HURT, true
+					)
+					|| !parent.getUUID().equals(readParentUuid(child))
+					|| child.level() != parent.level()) {
+					continue;
+				}
+				child.setTarget(attacker);
+			}
+		}
+	}
+
+	private static void followConfiguredParent(Mob baby) {
+		UUID parentUuid = readParentUuid(baby);
+		if (parentUuid == null || !(baby.level() instanceof ServerLevel)) {
+			return;
+		}
+		Mob parent = TRACKED_MOBS.get(parentUuid);
+		if (parent == null
+			|| !parent.isAlive()
+			|| parent.level() != baby.level()) {
+			return;
+		}
+		double distanceSqr = baby.distanceToSqr(parent);
+		JsonObject followParent = readObject(
+			readMobGoalsRoot(resolveConfiguredEntityVariantForRuntime(baby)),
+			MobConfigManager.FIELD_FOLLOW_PARENT
+		);
+		double speed = Math.max(0.05D, readDouble(followParent, MobConfigManager.FIELD_SPEED, 1.1D));
+		if (distanceSqr > 9.0D) {
+			baby.getNavigation().moveTo(parent, speed);
+		} else if (distanceSqr < 2.25D) {
+			baby.getNavigation().stop();
+		}
+	}
+
 	private static long resolveRuntimeProcessingInterval(MinecraftServer server) {
 		return AdaptiveIntervalAPIManager.resolve(
 			MOB_RUNTIME_ADAPTIVE_ID,
@@ -1832,6 +1917,180 @@ public final class MobEntityManager {
 		return resolveRegionalDifficultyMobFileKey(entity);
 	}
 
+	public static boolean isConfiguredEntityType(LivingEntity entity, String expectedType) {
+		String normalizedExpectedType = normalizeKey(expectedType);
+		if (entity == null || normalizedExpectedType.isBlank() || !MobConfigManager.isEnabled()) {
+			return false;
+		}
+		String fileKey = resolveRegionalDifficultyMobFileKey(entity);
+		if (fileKey.isBlank() || !isMobFileEnabled(fileKey)) {
+			return false;
+		}
+		JsonObject components = readMobComponentsRoot(resolveConfiguredEntityVariantForRuntime(entity));
+		JsonElement configuredTypes = components.get(MobConfigManager.FIELD_ENTITY_TYPE);
+		if (configuredTypes == null) {
+			return false;
+		}
+		if (configuredTypes.isJsonArray()) {
+			for (JsonElement configuredType : configuredTypes.getAsJsonArray()) {
+				if (configuredType != null && configuredType.isJsonPrimitive()
+					&& configuredType.getAsJsonPrimitive().isString()
+					&& normalizedExpectedType.equals(normalizeKey(configuredType.getAsString()))) {
+					return true;
+				}
+			}
+			return false;
+		}
+		return configuredTypes.isJsonPrimitive()
+			&& configuredTypes.getAsJsonPrimitive().isString()
+			&& normalizedExpectedType.equals(normalizeKey(configuredTypes.getAsString()));
+	}
+
+	public static boolean shouldIgnoreConfiguredNeutralTarget(LivingEntity attacker, LivingEntity target) {
+		return isConfiguredEntityType(target, MobConfigManager.ENTITY_TYPE_NEUTRAL)
+			&& isHostileForTargeting(attacker);
+	}
+
+	/**
+	 * Resolves the configured player-targeting goal for a mob.
+	 *
+	 * A null result means that the mob has no active configured override and
+	 * should retain vanilla targeting behavior.
+	 */
+	public static Boolean resolveConfiguredTargetPlayerGoal(LivingEntity entity) {
+		if (entity == null || !MobConfigManager.isEnabled()) {
+			return null;
+		}
+		String fileKey = resolveRegionalDifficultyMobFileKey(entity);
+		if (fileKey.isBlank() || !isMobFileEnabled(fileKey)) {
+			return null;
+		}
+		JsonObject fileRoot = resolveMobFileConfigRootForRuntime(fileKey);
+		if (!readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_GOALS, true)) {
+			return null;
+		}
+		JsonObject goals = readMobGoalsRoot(resolveConfiguredEntityVariantForRuntime(entity));
+		JsonObject targetPlayer = readObject(goals, MobConfigManager.FIELD_TARGET_PLAYER);
+		JsonElement enabled = targetPlayer.get(MobConfigManager.FIELD_ENABLED);
+		if (enabled == null || !enabled.isJsonPrimitive() || !enabled.getAsJsonPrimitive().isBoolean()) {
+			return null;
+		}
+		return enabled.getAsBoolean();
+	}
+
+	public static boolean isConfiguredTargetPlayerGoalAllowed(LivingEntity entity) {
+		if (!Boolean.TRUE.equals(resolveConfiguredTargetPlayerGoal(entity))) {
+			return false;
+		}
+		JsonObject goals = readMobGoalsRoot(resolveConfiguredEntityVariantForRuntime(entity));
+		JsonObject targetPlayer = readObject(goals, MobConfigManager.FIELD_TARGET_PLAYER);
+		JsonElement conditions = targetPlayer.get(MobConfigManager.FIELD_CONDITIONS);
+		if (conditions == null) {
+			return true;
+		}
+		if (!conditions.isJsonArray()) {
+			return false;
+		}
+		for (JsonElement conditionElement : conditions.getAsJsonArray()) {
+			if (conditionElement == null || !conditionElement.isJsonObject()) {
+				return false;
+			}
+			JsonObject condition = conditionElement.getAsJsonObject();
+			String conditionType = normalizeKey(readString(condition, MobConfigManager.FIELD_CONDITION, ""));
+			if (MobConfigManager.CONDITION_BABY_NEARBY.equals(conditionType)) {
+				double distance = Math.max(0.0D, readDouble(condition, MobConfigManager.FIELD_DISTANCE, 0.0D));
+				if (!hasConfiguredBabyNearby(entity, distance)) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	static boolean isConfiguredGoalEnabledForRuntime(LivingEntity entity, String goalKey) {
+		if (entity == null || goalKey == null || goalKey.isBlank()) {
+			return false;
+		}
+		String fileKey = resolveRegionalDifficultyMobFileKey(entity);
+		if (fileKey.isBlank() || !isMobFileEnabled(fileKey)
+			|| !readBoolean(
+				resolveMobFileConfigRootForRuntime(fileKey),
+				MobConfigManager.FIELD_OVERRIDE_GOALS,
+				true
+			)) {
+			return false;
+		}
+		JsonObject goals = readMobGoalsRoot(resolveConfiguredEntityVariantForRuntime(entity));
+		JsonObject goal = readObject(goals, goalKey);
+		return readBoolean(goal, MobConfigManager.FIELD_ENABLED, false);
+	}
+
+	private static boolean isConfiguredBehaviorEnabledForRuntime(
+		LivingEntity entity,
+		String behaviorKey,
+		boolean fallback
+	) {
+		if (entity == null || behaviorKey == null || behaviorKey.isBlank()) {
+			return fallback;
+		}
+		String fileKey = resolveRegionalDifficultyMobFileKey(entity);
+		if (fileKey.isBlank() || !isMobFileEnabled(fileKey)
+			|| !readBoolean(
+				resolveMobFileConfigRootForRuntime(fileKey),
+				MobConfigManager.FIELD_OVERRIDE_BEHAVIORS,
+				true
+			)) {
+			return false;
+		}
+		JsonObject behaviors = readObject(
+			resolveConfiguredEntityVariantForRuntime(entity),
+			MobConfigManager.FIELD_MOB_BEHAVIORS
+		);
+		JsonObject behavior = readObject(behaviors, behaviorKey);
+		JsonElement enabled = behavior.get(MobConfigManager.FIELD_ENABLED);
+		return enabled == null ? fallback : readBoolean(behavior, MobConfigManager.FIELD_ENABLED, fallback);
+	}
+
+	private static boolean hasConfiguredBabyNearby(LivingEntity entity, double distance) {
+		if (entity == null || distance <= 0.0D) {
+			return false;
+		}
+		double distanceSqr = distance * distance;
+		for (Mob child : TRACKED_MOBS.values()) {
+			if (child == null
+				|| !child.isAlive()
+				|| child.level() != entity.level()
+				|| !isBabyVariantEntity(child)
+				|| !entity.getUUID().equals(readParentUuid(child))) {
+				continue;
+			}
+			if (entity.distanceToSqr(child) <= distanceSqr) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isHostileForTargeting(LivingEntity entity) {
+		if (entity == null || isConfiguredEntityType(entity, MobConfigManager.ENTITY_TYPE_NEUTRAL)) {
+			return false;
+		}
+		return isConfiguredEntityType(entity, MobConfigManager.ENTITY_TYPE_HOSTILE)
+			|| entity instanceof Monster
+			|| entity instanceof IronGolem;
+	}
+
+	static String resolveConfiguredVariantKeyForRuntime(LivingEntity entity) {
+		String fileKey = resolveRegionalDifficultyMobFileKey(entity);
+		if (fileKey.isBlank() || !isMobFileEnabled(fileKey)) {
+			return "";
+		}
+		String storedVariant = readStoredVariantKeyForRuntime(entity, fileKey);
+		return storedVariant.isBlank()
+			? EntityConfigManager.resolvePrimaryVariantKeyForRuntime(root(fileKey))
+			: storedVariant;
+	}
+
 	static boolean shouldApplyConfiguredComponentsForRuntime(LivingEntity entity) {
 		if (entity == null || !MobConfigManager.isEnabled()) {
 			return false;
@@ -1906,7 +2165,7 @@ public final class MobEntityManager {
 		return "";
 	}
 
-	private static void writeStoredVariantKeyForRuntime(LivingEntity entity, String fileKey, String variantKey) {
+	static void writeStoredVariantKeyForRuntime(LivingEntity entity, String fileKey, String variantKey) {
 		if (entity == null || fileKey == null || fileKey.isBlank() || variantKey == null || variantKey.isBlank()) {
 			return;
 		}
@@ -1921,7 +2180,12 @@ public final class MobEntityManager {
 		if (existing != null) {
 			entity.removeTag(existing);
 		}
-		entity.addTag(prefix + normalizeKey(variantKey));
+		String normalizedVariantKey = normalizeKey(variantKey);
+		entity.addTag(prefix + normalizedVariantKey);
+		if (entity instanceof Spider spider && MobConfigManager.FILE_SPIDER.equals(fileKey)
+			&& spider instanceof SpiderVariantAccess access) {
+			access.madokuCraft$setVariantKey(normalizedVariantKey);
+		}
 	}
 
 	static JsonObject resolveNestedVariantRoot(JsonObject variantGroupRoot, String nestedVariantKey) {
@@ -2060,22 +2324,71 @@ public final class MobEntityManager {
 	}
 
 	private static boolean supportsBabyVariant(LivingEntity entity) {
-		return entity instanceof AgeableMob || entity instanceof Zombie;
+		return entity instanceof Mob;
 	}
 
 	private static boolean isBabyVariantEntity(LivingEntity entity) {
+		if (entity != null && entity.entityTags().contains(MOB_BABY_TAG)) {
+			return true;
+		}
 		if (entity instanceof Zombie zombie) {
 			return zombie.isBaby();
 		}
 		return entity instanceof AgeableMob ageableMob && ageableMob.isBaby();
 	}
 
-	private static void setBabyVariantEntity(LivingEntity entity, boolean baby) {
+	static boolean isBabyVariantEntityForRuntime(LivingEntity entity) {
+		return isBabyVariantEntity(entity);
+	}
+
+	static void setBabyVariantEntity(LivingEntity entity, boolean baby) {
+		if (entity == null) {
+			return;
+		}
 		if (entity instanceof Zombie zombie) {
 			zombie.setBaby(baby);
 		} else if (entity instanceof AgeableMob ageableMob) {
 			ageableMob.setBaby(baby);
 		}
+		if (baby) {
+			entity.addTag(MOB_BABY_TAG);
+		} else {
+			entity.removeTag(MOB_BABY_TAG);
+		}
+	}
+
+	static void writeParentTag(LivingEntity child, UUID parentUuid) {
+		if (child == null || parentUuid == null) {
+			return;
+		}
+		String existing = null;
+		for (String tag : child.entityTags()) {
+			if (tag != null && tag.startsWith(MOB_PARENT_TAG_PREFIX)) {
+				existing = tag;
+				break;
+			}
+		}
+		if (existing != null) {
+			child.removeTag(existing);
+		}
+		child.addTag(MOB_PARENT_TAG_PREFIX + parentUuid);
+	}
+
+	private static UUID readParentUuid(LivingEntity child) {
+		if (child == null) {
+			return null;
+		}
+		for (String tag : child.entityTags()) {
+			if (tag == null || !tag.startsWith(MOB_PARENT_TAG_PREFIX)) {
+				continue;
+			}
+			try {
+				return UUID.fromString(tag.substring(MOB_PARENT_TAG_PREFIX.length()));
+			} catch (IllegalArgumentException ignored) {
+				return null;
+			}
+		}
+		return null;
 	}
 
 	private static boolean hasMobBabyComponent(JsonObject variant) {
@@ -2099,7 +2412,7 @@ public final class MobEntityManager {
 		return "";
 	}
 
-	private static void writeNestedVariantTag(LivingEntity entity, String variantKey) {
+	static void writeNestedVariantTag(LivingEntity entity, String variantKey) {
 		if (entity == null || variantKey == null || variantKey.isBlank()) {
 			return;
 		}
