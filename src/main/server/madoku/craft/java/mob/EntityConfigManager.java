@@ -13,18 +13,6 @@ public final class EntityConfigManager {
 	private EntityConfigManager() {
 	}
 
-	public static JsonObject resolveVariant(JsonObject fileRoot, String variantKey) {
-		if (fileRoot == null) return new JsonObject();
-		JsonElement entityElement = fileRoot.get(MobConfigManager.FIELD_ENTITY);
-		if (entityElement == null || !entityElement.isJsonObject()) return new JsonObject();
-		JsonObject entity = entityElement.getAsJsonObject();
-		String resolvedKey = variantKey == null || variantKey.isBlank()
-			? resolvePrimaryVariantKey(fileRoot, entity)
-			: variantKey;
-		JsonObject selected = resolveVariantPath(entity, resolvedKey);
-		return merge(new JsonObject(), selected);
-	}
-
 	public static JsonObject resolvePrimaryVariant(JsonObject fileRoot) {
 		if (fileRoot == null) return new JsonObject();
 		JsonElement entityElement = fileRoot.get(MobConfigManager.FIELD_ENTITY);

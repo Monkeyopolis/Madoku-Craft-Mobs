@@ -1,6 +1,6 @@
 package madoku.craft.mixin.mob;
 
-import madoku.craft.java.mob.MobEntityManager;
+import madoku.craft.java.mob.EntityGoalsManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
@@ -15,8 +15,8 @@ public abstract class SpiderTargetGoalMixin {
 	@Inject(method = "canUse", at = @At("HEAD"), cancellable = true)
 	private void madokuCraft$disableConfiguredPlayerTargeting(CallbackInfoReturnable<Boolean> callbackInfo) {
 		Mob mob = ((TargetGoalAccessor) (Object) this).madokuCraft$getMob();
-		Boolean configured = MobEntityManager.resolveConfiguredTargetPlayerGoal(mob);
-		if (configured != null && (!configured || !MobEntityManager.isConfiguredTargetPlayerGoalAllowed(mob))) {
+		Boolean configured = EntityGoalsManager.resolvePlayerTargetGoal(mob);
+		if (configured != null && (!configured || !EntityGoalsManager.arePlayerTargetConditionsSatisfied(mob))) {
 			callbackInfo.setReturnValue(false);
 		}
 	}
@@ -29,8 +29,8 @@ public abstract class SpiderTargetGoalMixin {
 		)
 	)
 	private float madokuCraft$allowConfiguredPlayerTargeting(Mob mob) {
-		if (Boolean.TRUE.equals(MobEntityManager.resolveConfiguredTargetPlayerGoal(mob))
-			&& MobEntityManager.isConfiguredTargetPlayerGoalAllowed(mob)) {
+		if (Boolean.TRUE.equals(EntityGoalsManager.resolvePlayerTargetGoal(mob))
+			&& EntityGoalsManager.arePlayerTargetConditionsSatisfied(mob)) {
 			return 0.0F;
 		}
 		return madokuCraft$resolveVanillaLightValue(mob);

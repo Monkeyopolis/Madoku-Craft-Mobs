@@ -22,28 +22,34 @@
     "mob.MobDifficultySpawnMixin",
     "mob.MobExperienceAccessor",
     "mob.MobSpawnOverridesMixin",
+    "mob.MobTargetMixin",
     "mob.MobVariantParticlesMixin",
     "mob.NearestAttackableTargetMixin",
+    "mob.WrappedGoalMixin",
     "mob.RangedBowAttackGoalChargeUpMixin",
     "mob.RangedCrossbowAttackGoalAccessor",
     "mob.ServerExplosionBlockRadiusMixin",
     "mob.ServerExplosionPlayerDamageMixin",
     "mob.ServerLevelMobReplacementMixin",
     "mob.SkeletonRuntimeTickMixin",
-    "mob.SpiderVariantMixin",
+    "mob.MobVariantMixin",
     "mob.SpiderTargetGoalMixin",
     "mob.TargetGoalAccessor",
     "mob.ThrownTridentDamageMixin",
     "mob.ThrownTridentGroundClearMixin",
     "mob.VanillaSpiderJockeyMixin",
     "mob.VanillaZombieJockeyMixin",
+    "mob.ZombieReinforcementDifficultyMixin",
     "mob.ZombieSpawnAttributesMixin",
     "mob.WitherSkeletonWitherEffectMixin"
   ],
   "client": [
+    "mob.CreeperRendererMixin",
     "mob.LivingEntityRenderStateMixin",
     "mob.LivingEntityRendererMixin",
-    "mob.SpiderRendererMixin"
+    "mob.SkeletonRendererMixin",
+    "mob.SpiderRendererMixin",
+    "mob.ZombieRendererMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

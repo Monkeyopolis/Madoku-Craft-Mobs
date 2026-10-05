@@ -3,7 +3,8 @@ package madoku.craft.mixin.mob;
 import java.util.ArrayList;
 import java.util.List;
 
-import madoku.craft.java.mob.MobEntityManager;
+import madoku.craft.java.mob.EntityGoalsManager;
+import madoku.craft.java.mob.EntityRelationshipManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -22,7 +23,7 @@ public abstract class NearestAttackableTargetMixin {
 			target = "Lnet/minecraft/server/level/ServerLevel;getNearestEntity(Ljava/util/List;Lnet/minecraft/world/entity/ai/targeting/TargetingConditions;Lnet/minecraft/world/entity/LivingEntity;DDD)Lnet/minecraft/world/entity/LivingEntity;"
 		)
 	)
-	private LivingEntity madokuCraft$filterConfiguredNeutralTargets(
+	private LivingEntity madokuCraft$filterConfiguredTargets(
 		ServerLevel serverLevel,
 		List<? extends LivingEntity> candidates,
 		TargetingConditions conditions,
@@ -34,7 +35,8 @@ public abstract class NearestAttackableTargetMixin {
 		Mob mob = ((TargetGoalAccessor) (Object) this).madokuCraft$getMob();
 		List<LivingEntity> filteredCandidates = new ArrayList<>();
 		for (LivingEntity candidate : candidates) {
-			if (!MobEntityManager.shouldIgnoreConfiguredNeutralTarget(mob, candidate)) {
+			if (EntityRelationshipManager.canSetTarget(mob, candidate)
+				&& !EntityGoalsManager.shouldIgnorePlayerTarget(mob, candidate)) {
 				filteredCandidates.add(candidate);
 			}
 		}

@@ -3,9 +3,9 @@ package madoku.craft.mixin.mob;
 import java.util.List;
 
 import madoku.craft.java.mob.LivingEntityRendererLayersAccess;
-import madoku.craft.java.mob.MobVariantAppearanceManager;
+import madoku.craft.java.mob.MobAppearanceRenderManager;
 import madoku.craft.java.mob.SpiderVariantEyesLayer;
-import madoku.craft.java.mob.SpiderVariantRenderStateAccess;
+import madoku.craft.java.mob.MobVariantRenderStateAccess;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.model.monster.spider.SpiderModel;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
@@ -51,13 +51,10 @@ public abstract class SpiderRendererMixin {
 		LivingEntityRenderState state,
 		CallbackInfoReturnable<Identifier> callbackInfo
 	) {
-		if (!(state instanceof SpiderVariantRenderStateAccess access)) {
+		if (!(state instanceof MobVariantRenderStateAccess access)) {
 			return;
 		}
-		Identifier texture = MobVariantAppearanceManager.resolve(
-			"minecraft:spider",
-			access.madokuCraft$getVariantKey()
-		).texture();
+		Identifier texture = MobAppearanceRenderManager.texture("minecraft:spider", access.madokuCraft$getVariantKey());
 		if (texture != null) {
 			callbackInfo.setReturnValue(texture);
 		}

@@ -26,7 +26,7 @@ public final class MobVariantClient {
 				return;
 			}
 			String variantKey = payload.variantKey() == null ? "" : payload.variantKey().trim().toLowerCase(Locale.ROOT);
-			if (variantKey.isBlank() || "spider".equals(variantKey)) {
+			if (variantKey.isBlank()) {
 				VARIANT_KEYS.remove(payload.entityUuid());
 			} else {
 				VARIANT_KEYS.put(payload.entityUuid(), variantKey);

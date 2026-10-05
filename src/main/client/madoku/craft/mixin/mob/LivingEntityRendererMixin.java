@@ -7,7 +7,7 @@ import madoku.craft.java.mob.MobIndicatorClient;
 import madoku.craft.java.mob.MobIndicatorRenderStateAccess;
 import madoku.craft.java.mob.LivingEntityRendererLayersAccess;
 import madoku.craft.java.mob.MobVariantClient;
-import madoku.craft.java.mob.SpiderVariantRenderStateAccess;
+import madoku.craft.java.mob.MobVariantRenderStateAccess;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
@@ -46,7 +46,7 @@ public abstract class LivingEntityRendererMixin implements LivingEntityRendererL
 		access.madokuCraftMobIndicator$setHealth(managed ? entity.getHealth() : 0.0F);
 		access.madokuCraftMobIndicator$setMaxHealth(managed ? entity.getMaxHealth() : 0.0F);
 		access.madokuCraftMobIndicator$setArmor(managed ? entity.getArmorValue() : 0.0F);
-		if (state instanceof SpiderVariantRenderStateAccess variantAccess) {
+		if (state instanceof MobVariantRenderStateAccess variantAccess) {
 			String variantKey = MobVariantClient.getVariantKey(entity.getUUID());
 			variantAccess.madokuCraft$setVariantKey(variantKey);
 		}

@@ -4,7 +4,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.spider.Spider;
+import net.minecraft.world.entity.Mob;
 
 final class MobVariantNetworking {
 	private MobVariantNetworking() {
@@ -18,12 +18,12 @@ final class MobVariantNetworking {
 		return true;
 	}
 
-	static void broadcast(MinecraftServer server, Spider spider) {
-		if (server == null || spider == null) {
+	static void broadcast(MinecraftServer server, Mob mob) {
+		if (server == null || mob == null) {
 			return;
 		}
-		String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(spider);
-		broadcast(server, spider.getUUID(), variantKey);
+		String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(mob);
+		broadcast(server, mob.getUUID(), variantKey);
 	}
 
 	static void broadcast(MinecraftServer server, Entity entity, String variantKey) {
@@ -52,10 +52,10 @@ final class MobVariantNetworking {
 		}
 		for (var level : server.getAllLevels()) {
 			for (Entity entity : level.getAllEntities()) {
-				if (entity instanceof Spider spider) {
-					String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(spider);
+				if (entity instanceof Mob mob) {
+					String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(mob);
 					if (!variantKey.isBlank()) {
-						send(player, new MobVariantPayloadManager(spider.getUUID(), variantKey));
+						send(player, new MobVariantPayloadManager(mob.getUUID(), variantKey));
 					}
 				}
 			}

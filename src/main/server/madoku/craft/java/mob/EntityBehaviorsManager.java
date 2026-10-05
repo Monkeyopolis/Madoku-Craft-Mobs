@@ -766,7 +766,6 @@ public final class EntityBehaviorsManager {
 	public static final class BoggedBehavior {
 		private static final int DEFAULT_ATTACK_INTERVAL_TICKS = 20;
 		private static final int DEFAULT_CHARGE_UP_TICKS = 10;
-		private static final String BOGGED_VARIANT_TAG_PREFIX = "madoku-craft.bogged.variant:";
 
 		private static final Map<UUID, PendingRangedBowCharge> PENDING_RANGED_BOW_CHARGES = new ConcurrentHashMap<>();
 		private static final Map<UUID, Integer> RANGED_BOW_COOLDOWNS = new ConcurrentHashMap<>();
@@ -1003,28 +1002,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeVariantTag(skeleton, selectedVariant);
-			JsonObject selected = resolveVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
-		}
-
-		private static String selectVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				BoggedBehavior::isReservedBoggedGroupKey,
-				variantRoot -> MobEntityManager.resolveVariantSpawnWeight(variantRoot, 0.0D)
-			);
+			return defaultGroup;
 		}
 
 		private static JsonObject resolveVariantRootByKey(JsonObject fileRoot, String variantKey) {
@@ -1051,43 +1029,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredVariantKey(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return "";
-			}
-			for (String tag : skeleton.entityTags()) {
-				if (tag == null || !tag.startsWith(BOGGED_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(BOGGED_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeVariantTag(AbstractSkeleton skeleton, String variantKey) {
-			if (skeleton == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearVariantTag(skeleton);
-			skeleton.addTag(BOGGED_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_BOGGED);
 		}
 
 		private static void clearVariantTag(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : skeleton.entityTags()) {
-				if (tag != null && tag.startsWith(BOGGED_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				skeleton.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_BOGGED);
 		}
 
 		private static void applyBehaviorToggles(AbstractSkeleton skeleton, JsonObject fileRoot, JsonObject variantRoot) {
@@ -1579,7 +1525,6 @@ public final class EntityBehaviorsManager {
 
 	public static final class DrownedBehavior {
 		private static final double MIN_DROWNED_TRIDENT_HOMING_DISTANCE_SQR = 4.0D;
-		private static final String DROWNED_VARIANT_TAG_PREFIX = "madoku-craft.drowned.variant:";
 		private static final String DROWNED_VARIANT_RANGED_KEY = "ranged-drowned";
 		private static final String RANGED_TRIDENT_TAG = "madoku-craft.drowned.ranged_trident";
 
@@ -1794,32 +1739,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectDrownedVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeDrownedVariantTag(drowned, selectedVariant);
-			JsonObject selected = resolveDrownedVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
-		}
-
-		private static String selectDrownedVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				DrownedBehavior::isReservedDrownedGroupKey,
-				variantRoot -> resolveDrownedVariantSpawnWeight(variantRoot, 0.0D)
-			);
-		}
-
-		private static double resolveDrownedVariantSpawnWeight(JsonObject variantRoot, double fallback) {
-			return MobEntityManager.resolveVariantSpawnWeight(variantRoot, fallback);
+			return defaultGroup;
 		}
 
 		private static boolean isReservedDrownedGroupKey(String normalizedKey) {
@@ -1841,43 +1761,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredDrownedVariantKey(Drowned drowned) {
-			if (drowned == null) {
-				return "";
-			}
-			for (String tag : drowned.entityTags()) {
-				if (tag == null || !tag.startsWith(DROWNED_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(DROWNED_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeDrownedVariantTag(Drowned drowned, String variantKey) {
-			if (drowned == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearDrownedVariantTag(drowned);
-			drowned.addTag(DROWNED_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(drowned, MobConfigManager.FILE_DROWNED);
 		}
 
 		private static void clearDrownedVariantTag(Drowned drowned) {
-			if (drowned == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : drowned.entityTags()) {
-				if (tag != null && tag.startsWith(DROWNED_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				drowned.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(drowned, MobConfigManager.FILE_DROWNED);
 		}
 
 		private static JsonObject mergeDrownedFileSettings(JsonObject fileRoot, JsonObject variantRoot) {
@@ -1906,10 +1794,7 @@ public final class EntityBehaviorsManager {
 				drowned.setCanPickUpLoot(MobEntityManager.readMobBehaviorBooleanForRuntime(variantRoot, MobConfigManager.FIELD_CAN_PICK_UP_LOOT, true));
 			}
 			if (overrideBehavior) {
-				boolean callsReinforcements = readBoolean(behaviorRoot, MobConfigManager.FIELD_CALLS_REINFORCEMENTS_WHEN_HURT, false);
-				if (!callsReinforcements) {
-					MobEntityManager.disableZombieReinforcementsForRuntime(drowned);
-				}
+				MobEntityManager.configureZombieReinforcementsForRuntime(drowned, behaviorRoot);
 				drowned.setSearchingForLand(true);
 			}
 		}
@@ -2020,10 +1905,6 @@ public final class EntityBehaviorsManager {
 				return resolveTridentGroundClearTicks(drowned);
 			}
 			return trident.entityTags().contains(RANGED_TRIDENT_TAG) ? 300 : -1;
-		}
-
-		public static boolean isRangedDrownedTrident(Entity entity) {
-			return entity instanceof net.minecraft.world.entity.projectile.arrow.ThrownTrident trident && trident.entityTags().contains(RANGED_TRIDENT_TAG);
 		}
 
 		private static boolean fireRangedDrownedTrident(Drowned drowned, LivingEntity target) {
@@ -2416,15 +2297,8 @@ public final class EntityBehaviorsManager {
 				husk.setCanPickUpLoot(MobEntityManager.readMobBehaviorBooleanForRuntime(variantRoot, MobConfigManager.FIELD_CAN_PICK_UP_LOOT, true));
 			}
 			if (overrideBehavior) {
-				boolean callsReinforcements = readBoolean(behaviorRoot, MobConfigManager.FIELD_CALLS_REINFORCEMENTS_WHEN_HURT, true);
-				if (!callsReinforcements) {
-					disableHuskReinforcementsForRuntime(husk);
-				}
+				MobEntityManager.configureZombieReinforcementsForRuntime(husk, behaviorRoot);
 			}
-		}
-
-		private static void disableHuskReinforcementsForRuntime(Husk husk) {
-			MobEntityManager.disableZombieReinforcementsForRuntime(husk);
 		}
 
 		private static void applyWeaponDamagePolicy(Husk husk, JsonObject resolvedRoot) {
@@ -2493,7 +2367,6 @@ public final class EntityBehaviorsManager {
 	public static final class ParchedBehavior {
 		private static final int DEFAULT_ATTACK_INTERVAL_TICKS = 20;
 		private static final int DEFAULT_CHARGE_UP_TICKS = 10;
-		private static final String PARCHED_VARIANT_TAG_PREFIX = "madoku-craft.parched.variant:";
 
 		private static final Map<UUID, PendingRangedBowCharge> PENDING_RANGED_BOW_CHARGES = new ConcurrentHashMap<>();
 		private static final Map<UUID, Integer> RANGED_BOW_COOLDOWNS = new ConcurrentHashMap<>();
@@ -2730,28 +2603,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeVariantTag(skeleton, selectedVariant);
-			JsonObject selected = resolveVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
-		}
-
-		private static String selectVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				ParchedBehavior::isReservedParchedGroupKey,
-				variantRoot -> MobEntityManager.resolveVariantSpawnWeight(variantRoot, 0.0D)
-			);
+			return defaultGroup;
 		}
 
 		private static JsonObject resolveVariantRootByKey(JsonObject fileRoot, String variantKey) {
@@ -2778,43 +2630,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredVariantKey(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return "";
-			}
-			for (String tag : skeleton.entityTags()) {
-				if (tag == null || !tag.startsWith(PARCHED_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(PARCHED_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeVariantTag(AbstractSkeleton skeleton, String variantKey) {
-			if (skeleton == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearVariantTag(skeleton);
-			skeleton.addTag(PARCHED_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_PARCHED);
 		}
 
 		private static void clearVariantTag(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : skeleton.entityTags()) {
-				if (tag != null && tag.startsWith(PARCHED_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				skeleton.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_PARCHED);
 		}
 
 		private static void applyBehaviorToggles(AbstractSkeleton skeleton, JsonObject fileRoot, JsonObject variantRoot) {
@@ -3117,7 +2937,6 @@ public final class EntityBehaviorsManager {
 	public static final class SkeletonBehavior {
 		private static final int DEFAULT_ATTACK_INTERVAL_TICKS = 20;
 		private static final int DEFAULT_CHARGE_UP_TICKS = 10;
-		private static final String SKELETON_VARIANT_TAG_PREFIX = "madoku-craft.skeleton.variant:";
 
 		private static final Map<UUID, PendingRangedBowCharge> PENDING_RANGED_BOW_CHARGES = new ConcurrentHashMap<>();
 		private static final Map<UUID, Integer> RANGED_BOW_COOLDOWNS = new ConcurrentHashMap<>();
@@ -3319,10 +3138,6 @@ public final class EntityBehaviorsManager {
 			}
 		}
 
-		public static boolean applyBowAttack(AbstractSkeleton skeleton, LivingEntity target, float pullProgress) {
-			return applyRangedSkeletonBowAttack(skeleton, target, pullProgress);
-		}
-
 		private static InteractionHand resolveBowHand(AbstractSkeleton skeleton) {
 			if (skeleton == null) {
 				return null;
@@ -3459,19 +3274,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectSkeletonVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeSkeletonVariantTag(skeleton, selectedVariant);
-			JsonObject selected = resolveSkeletonVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
+			return defaultGroup;
 		}
 
 		private static JsonObject resolveSkeletonVariantRootByKey(JsonObject fileRoot, String variantKey) {
@@ -3482,14 +3285,6 @@ public final class EntityBehaviorsManager {
 			);
 		}
 
-		private static String selectSkeletonVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				SkeletonBehavior::isReservedSkeletonGroupKey,
-				variantRoot -> MobEntityManager.resolveVariantSpawnWeight(variantRoot, 0.0D)
-			);
-		}
 
 		private static boolean isReservedSkeletonGroupKey(String normalizedKey) {
 			if (normalizedKey == null || normalizedKey.isBlank()) {
@@ -3529,43 +3324,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredSkeletonVariantKey(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return "";
-			}
-			for (String tag : skeleton.entityTags()) {
-				if (tag == null || !tag.startsWith(SKELETON_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(SKELETON_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeSkeletonVariantTag(AbstractSkeleton skeleton, String variantKey) {
-			if (skeleton == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearSkeletonVariantTag(skeleton);
-			skeleton.addTag(SKELETON_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(skeleton, MobEntityManager.resolveRuntimeMobFileKey(skeleton));
 		}
 
 		private static void clearSkeletonVariantTag(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : skeleton.entityTags()) {
-				if (tag != null && tag.startsWith(SKELETON_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				skeleton.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(skeleton, MobEntityManager.resolveRuntimeMobFileKey(skeleton));
 		}
 
 		private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
@@ -3828,37 +3591,6 @@ public final class EntityBehaviorsManager {
 			}
 
 			clearExistingSkeletonPassengers(spider);
-			return applyConfiguredSpiderVariantOutcome(
-				spider,
-				world,
-				difficulty,
-				spawnReason,
-				MobEntityManager.resolveConfiguredEntityVariantForRuntime(spider)
-			);
-		}
-
-		private static boolean applyConfiguredSpiderVariantOutcome(
-			Spider spider,
-			ServerLevelAccessor world,
-			DifficultyInstance difficulty,
-			EntitySpawnReason spawnReason,
-			JsonObject variantRoot
-		) {
-			if (variantRoot == null) {
-				return false;
-			}
-
-			JsonObject spawnRules = readObject(variantRoot, MobConfigManager.FIELD_SPAWN_RULES);
-			JsonObject alternativeMobRoot = readObject(spawnRules, MobConfigManager.FIELD_SPAWN_ALTERNATIVE_MOB);
-			if (!alternativeMobRoot.entrySet().isEmpty() && readBoolean(alternativeMobRoot, MobConfigManager.FIELD_ENABLED, false)) {
-				EntityType<?> replacementType = MobEntityManager.resolveConfiguredMobEntityType(alternativeMobRoot);
-				if (replacementType != null && replacementType != MobEntityTypeAPIManager.SPIDER) {
-					if (replacementType == MobEntityTypeAPIManager.CAVE_SPIDER) {
-						MobEntityManager.queueCaveSpiderReplacement(spider, spawnReason);
-					}
-					return true;
-				}
-			}
 			return false;
 		}
 
@@ -3883,14 +3615,6 @@ public final class EntityBehaviorsManager {
 			}
 		}
 
-		private static JsonObject readObject(JsonObject parent, String key) {
-			if (parent == null || key == null || key.isBlank()) {
-				return new JsonObject();
-			}
-			JsonElement element = EntityConfigManager.resolveConfiguredElement(parent, key);
-			return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
-		}
-
 		private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
 			if (root == null || key == null || key.isBlank()) {
 				return fallback;
@@ -3904,7 +3628,6 @@ public final class EntityBehaviorsManager {
 	public static final class StrayBehavior {
 		private static final int DEFAULT_ATTACK_INTERVAL_TICKS = 20;
 		private static final int DEFAULT_CHARGE_UP_TICKS = 10;
-		private static final String STRAY_VARIANT_TAG_PREFIX = "madoku-craft.stray.variant:";
 
 		private static final Map<UUID, PendingRangedBowCharge> PENDING_RANGED_BOW_CHARGES = new ConcurrentHashMap<>();
 		private static final Map<UUID, Integer> RANGED_BOW_COOLDOWNS = new ConcurrentHashMap<>();
@@ -4141,28 +3864,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeVariantTag(skeleton, selectedVariant);
-			JsonObject selected = resolveVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
-		}
-
-		private static String selectVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				StrayBehavior::isReservedStrayGroupKey,
-				variantRoot -> MobEntityManager.resolveVariantSpawnWeight(variantRoot, 0.0D)
-			);
+			return defaultGroup;
 		}
 
 		private static JsonObject resolveVariantRootByKey(JsonObject fileRoot, String variantKey) {
@@ -4189,43 +3891,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredVariantKey(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return "";
-			}
-			for (String tag : skeleton.entityTags()) {
-				if (tag == null || !tag.startsWith(STRAY_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(STRAY_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeVariantTag(AbstractSkeleton skeleton, String variantKey) {
-			if (skeleton == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearVariantTag(skeleton);
-			skeleton.addTag(STRAY_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_STRAY);
 		}
 
 		private static void clearVariantTag(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : skeleton.entityTags()) {
-				if (tag != null && tag.startsWith(STRAY_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				skeleton.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_STRAY);
 		}
 
 		private static void applyBehaviorToggles(AbstractSkeleton skeleton, JsonObject fileRoot, JsonObject variantRoot) {
@@ -4526,7 +4196,6 @@ public final class EntityBehaviorsManager {
 
 	public static final class WitherSkeletonBehavior {
 		private static final int DEFAULT_WITHER_EFFECT_DURATION_TICKS = 5 * 20;
-		private static final String WITHER_SKELETON_VARIANT_TAG_PREFIX = "madoku-craft.wither-skeleton.variant:";
 
 		private WitherSkeletonBehavior() {
 		}
@@ -4652,19 +4321,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectWitherSkeletonVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeWitherSkeletonVariantTag(skeleton, selectedVariant);
-			JsonObject selected = resolveWitherSkeletonVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
+			return defaultGroup;
 		}
 
 		private static JsonObject resolveWitherSkeletonVariantRootByKey(JsonObject fileRoot, String variantKey) {
@@ -4675,14 +4332,6 @@ public final class EntityBehaviorsManager {
 			);
 		}
 
-		private static String selectWitherSkeletonVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				WitherSkeletonBehavior::isReservedWitherSkeletonGroupKey,
-				variantRoot -> MobEntityManager.resolveVariantSpawnWeight(variantRoot, 0.0D)
-			);
-		}
 
 		private static boolean isReservedWitherSkeletonGroupKey(String normalizedKey) {
 			if (normalizedKey == null || normalizedKey.isBlank()) {
@@ -4810,43 +4459,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredWitherSkeletonVariantKey(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return "";
-			}
-			for (String tag : skeleton.entityTags()) {
-				if (tag == null || !tag.startsWith(WITHER_SKELETON_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(WITHER_SKELETON_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeWitherSkeletonVariantTag(AbstractSkeleton skeleton, String variantKey) {
-			if (skeleton == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearWitherSkeletonVariantTag(skeleton);
-			skeleton.addTag(WITHER_SKELETON_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_WITHER_SKELETON);
 		}
 
 		private static void clearWitherSkeletonVariantTag(AbstractSkeleton skeleton) {
-			if (skeleton == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : skeleton.entityTags()) {
-				if (tag != null && tag.startsWith(WITHER_SKELETON_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				skeleton.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(skeleton, MobConfigManager.FILE_WITHER_SKELETON);
 		}
 
 		private static String normalizeKey(String value) {
@@ -4862,8 +4479,6 @@ public final class EntityBehaviorsManager {
 	}
 
 	public static final class ZombieBehavior {
-		private static final String ZOMBIE_VARIANT_TAG_PREFIX = "madoku-craft.zombie.variant:";
-
 		private ZombieBehavior() {
 		}
 
@@ -4899,9 +4514,6 @@ public final class EntityBehaviorsManager {
 				overrideSpawnRules
 			);
 			variant = mergeZombieFileSettings(fileRoot, variant);
-			if (overrideSpawnRules && applyConfiguredZombieAlternativeMobReplacement(zombie, variant, spawnReason)) {
-				return;
-			}
 			applyWeaponDamagePolicy(zombie, variant);
 			applyZombieBehaviorToggles(zombie, fileConfigRoot, variant);
 			if (overrideStats) {
@@ -4984,31 +4596,6 @@ public final class EntityBehaviorsManager {
 		}
 
 
-		private static boolean applyConfiguredZombieAlternativeMobReplacement(
-			Zombie zombie,
-			JsonObject variantRoot,
-			EntitySpawnReason spawnReason
-		) {
-			if (zombie == null || variantRoot == null || zombie.getType() != MobEntityTypeAPIManager.ZOMBIE) {
-				return false;
-			}
-			JsonObject spawnRules = readObject(variantRoot, MobConfigManager.FIELD_SPAWN_RULES);
-			JsonObject alternativeMobRoot = readObject(spawnRules, MobConfigManager.FIELD_SPAWN_ALTERNATIVE_MOB);
-			if (alternativeMobRoot.entrySet().isEmpty() || !readBoolean(alternativeMobRoot, MobConfigManager.FIELD_ENABLED, false)) {
-				return false;
-			}
-			EntityType<?> replacementType = MobEntityManager.resolveConfiguredMobEntityType(alternativeMobRoot, zombie.isBaby());
-			if (replacementType == null || replacementType == MobEntityTypeAPIManager.ZOMBIE) {
-				return false;
-			}
-			MobEntityManager.queueZombieReplacement(zombie, replacementType, spawnReason);
-			return true;
-		}
-
-
-
-
-
 		private static JsonObject resolveZombieVariantGroupRoot(
 			Zombie zombie,
 			JsonObject fileConfigRoot,
@@ -5028,19 +4615,7 @@ public final class EntityBehaviorsManager {
 					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-
-			boolean overrideSpawnRules = readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_SPAWN_RULES, true);
-			if (!spawnContext || !overrideSpawnRules || world == null) {
-				return defaultGroup;
-			}
-
-			String selectedVariant = selectZombieVariantKey(fileConfigRoot, world);
-			if (selectedVariant.isBlank()) {
-				return defaultGroup;
-			}
-			writeZombieVariantTag(zombie, selectedVariant);
-			JsonObject selected = resolveZombieVariantRootByKey(fileConfigRoot, selectedVariant);
-			return selected.entrySet().isEmpty() ? defaultGroup : MobEntityManager.resolveVariantGroupRoot(defaultGroup, selected);
+			return defaultGroup;
 		}
 
 		private static JsonObject mergeZombieFileSettings(JsonObject fileRoot, JsonObject variantRoot) {
@@ -5064,18 +4639,6 @@ public final class EntityBehaviorsManager {
 			}
 		}
 
-		private static String selectZombieVariantKey(JsonObject fileRoot, ServerLevelAccessor world) {
-			return MobEntityManager.selectWeightedVariantKey(
-				fileRoot,
-				world == null ? null : world.getRandom(),
-				ZombieBehavior::isReservedZombieGroupKey,
-				variantRoot -> resolveZombieVariantSpawnWeight(variantRoot, 0.0D)
-			);
-		}
-
-		private static double resolveZombieVariantSpawnWeight(JsonObject variantRoot, double fallback) {
-			return MobEntityManager.resolveVariantSpawnWeight(variantRoot, fallback);
-		}
 
 		private static boolean isReservedZombieGroupKey(String normalizedKey) {
 			if (normalizedKey == null || normalizedKey.isBlank()) {
@@ -5096,43 +4659,11 @@ public final class EntityBehaviorsManager {
 		}
 
 		private static String readStoredZombieVariantKey(Zombie zombie) {
-			if (zombie == null) {
-				return "";
-			}
-			for (String tag : zombie.entityTags()) {
-				if (tag == null || !tag.startsWith(ZOMBIE_VARIANT_TAG_PREFIX)) {
-					continue;
-				}
-				String normalized = normalizeKey(tag.substring(ZOMBIE_VARIANT_TAG_PREFIX.length()));
-				if (!normalized.isBlank()) {
-					return normalized;
-				}
-			}
-			return "";
-		}
-
-		private static void writeZombieVariantTag(Zombie zombie, String variantKey) {
-			if (zombie == null || variantKey == null || variantKey.isBlank()) {
-				return;
-			}
-			clearZombieVariantTag(zombie);
-			zombie.addTag(ZOMBIE_VARIANT_TAG_PREFIX + normalizeKey(variantKey));
+			return MobEntityManager.readStoredVariantKeyForRuntime(zombie, MobConfigManager.FILE_ZOMBIE);
 		}
 
 		private static void clearZombieVariantTag(Zombie zombie) {
-			if (zombie == null) {
-				return;
-			}
-			String existing = null;
-			for (String tag : zombie.entityTags()) {
-				if (tag != null && tag.startsWith(ZOMBIE_VARIANT_TAG_PREFIX)) {
-					existing = tag;
-					break;
-				}
-			}
-			if (existing != null) {
-				zombie.removeTag(existing);
-			}
+			MobEntityManager.clearStoredVariantKeyForRuntime(zombie, MobConfigManager.FILE_ZOMBIE);
 		}
 
 		private static void applyZombieBehaviorToggles(Zombie zombie, JsonObject fileRoot, JsonObject variantRoot) {
@@ -5146,10 +4677,7 @@ public final class EntityBehaviorsManager {
 				zombie.setCanPickUpLoot(MobEntityManager.readMobBehaviorBooleanForRuntime(variantRoot, MobConfigManager.FIELD_CAN_PICK_UP_LOOT, false));
 			}
 			if (overrideBehavior) {
-				boolean callsReinforcements = readBoolean(behaviorRoot, MobConfigManager.FIELD_CALLS_REINFORCEMENTS_WHEN_HURT, !zombie.isBaby());
-				if (!callsReinforcements) {
-					MobEntityManager.disableZombieReinforcementsForRuntime(zombie);
-				}
+				MobEntityManager.configureZombieReinforcementsForRuntime(zombie, behaviorRoot);
 			}
 		}
 
@@ -5361,10 +4889,7 @@ public final class EntityBehaviorsManager {
 				zombieVillager.setCanPickUpLoot(MobEntityManager.readMobBehaviorBooleanForRuntime(variantRoot, MobConfigManager.FIELD_CAN_PICK_UP_LOOT, false));
 			}
 			if (overrideBehavior) {
-				boolean callsReinforcements = readBoolean(behaviorRoot, MobConfigManager.FIELD_CALLS_REINFORCEMENTS_WHEN_HURT, !zombieVillager.isBaby());
-				if (!callsReinforcements) {
-					MobEntityManager.disableZombieReinforcementsForRuntime(zombieVillager);
-				}
+				MobEntityManager.configureZombieReinforcementsForRuntime(zombieVillager, behaviorRoot);
 			}
 		}
 

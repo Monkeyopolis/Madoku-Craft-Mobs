@@ -48,9 +48,9 @@ public final class SpiderVariantEyesLayer extends EyesLayer<LivingEntityRenderSt
 	}
 
 	private static Identifier resolveEyes(LivingEntityRenderState state) {
-		if (!(state instanceof SpiderVariantRenderStateAccess access)) {
+		if (!(state instanceof MobVariantRenderStateAccess access)) {
 			return null;
 		}
-		return MobVariantAppearanceManager.resolve("minecraft:spider", access.madokuCraft$getVariantKey()).eyes();
+		return MobAppearanceRenderManager.eyes("minecraft:spider", access.madokuCraft$getVariantKey());
 	}
 }

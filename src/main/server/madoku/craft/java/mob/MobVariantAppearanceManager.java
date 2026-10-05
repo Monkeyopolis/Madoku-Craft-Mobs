@@ -61,6 +61,9 @@ public final class MobVariantAppearanceManager {
 			if (value.eyes() != null) {
 				appearance.addProperty(MobConfigManager.FIELD_APPEARANCE_EYES, value.eyes().toString());
 			}
+			if (value.armor() != null) {
+				appearance.addProperty(MobConfigManager.FIELD_APPEARANCE_ARMOR, value.armor().toString());
+			}
 			if (value.particles() != null) {
 				JsonElement particle = serializeParticle(value.particles());
 				if (particle != null) {
@@ -180,6 +183,7 @@ public final class MobVariantAppearanceManager {
 		return new VariantAppearance(
 			parseTexture(readString(root, MobConfigManager.FIELD_APPEARANCE_TEXTURE)),
 			parseTexture(readString(root, MobConfigManager.FIELD_APPEARANCE_EYES)),
+			parseTexture(readString(root, MobConfigManager.FIELD_APPEARANCE_ARMOR)),
 			parseParticle(root == null ? null : root.get(MobConfigManager.FIELD_APPEARANCE_PARTICLES))
 		);
 	}
@@ -329,11 +333,11 @@ public final class MobVariantAppearanceManager {
 		return mobId.trim().toLowerCase(Locale.ROOT) + "|" + variantKey.trim().toLowerCase(Locale.ROOT);
 	}
 
-	public record VariantAppearance(Identifier texture, Identifier eyes, ParticleOptions particles) {
-		private static final VariantAppearance EMPTY = new VariantAppearance(null, null, null);
+	public record VariantAppearance(Identifier texture, Identifier eyes, Identifier armor, ParticleOptions particles) {
+		private static final VariantAppearance EMPTY = new VariantAppearance(null, null, null, null);
 
 		public boolean isEmpty() {
-			return texture == null && eyes == null && particles == null;
+			return texture == null && eyes == null && armor == null && particles == null;
 		}
 	}
 }
