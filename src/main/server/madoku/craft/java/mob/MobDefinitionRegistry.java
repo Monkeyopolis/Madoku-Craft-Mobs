@@ -2,6 +2,7 @@ package madoku.craft.java.mob;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import madoku.craft.java.core.json.JSONAPIManager;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -19,7 +20,7 @@ final class MobDefinitionRegistry {
 		Map<String, String> resolved = new LinkedHashMap<>();
 		if (files != null) {
 			for (Map.Entry<String, JsonObject> entry : files.entrySet()) {
-				String fileKey = normalize(entry.getKey());
+				String fileKey = normalizeFileKey(entry.getKey());
 				String mobId = readMobId(entry.getValue());
 				if (!fileKey.isBlank() && !mobId.isBlank()) {
 					resolved.putIfAbsent(mobId, fileKey);
@@ -34,7 +35,7 @@ final class MobDefinitionRegistry {
 			return "";
 		}
 		Identifier identifier = EntityType.getKey(entityType);
-		return identifier == null ? "" : fileKeysByMobId.getOrDefault(normalize(identifier.toString()), "");
+		return identifier == null ? "" : fileKeysByMobId.getOrDefault(normalizeMobId(identifier.toString()), "");
 	}
 
 	private static String readMobId(JsonObject fileRoot) {
@@ -45,10 +46,14 @@ final class MobDefinitionRegistry {
 		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
 			return "";
 		}
-		return normalize(element.getAsString());
+		return normalizeMobId(element.getAsString());
 	}
 
-	private static String normalize(String value) {
+	private static String normalizeFileKey(String value) {
 		return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+	}
+
+	private static String normalizeMobId(String value) {
+		return JSONAPIManager.normalizeRegistryIdentifierForLookup(value);
 	}
 }

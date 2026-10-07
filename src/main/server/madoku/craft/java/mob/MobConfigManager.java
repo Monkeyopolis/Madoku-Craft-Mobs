@@ -79,10 +79,12 @@ public final class MobConfigManager {
 	public static final String FILE_WITHER_SKELETON = "wither-skeleton";
 	public static final String FILE_HAG = "hag";
 	public static final String FILE_BEE = "bee";
+	public static final String FILE_PIGLIN = "piglin";
 
 	public static final String FIELD_CAN_PICK_UP_LOOT = "can-pick-up-loot";
 	public static final String FIELD_TRIDENT_ATTACK = "trident-attack";
 	public static final String FIELD_BOW_ATTACK = "bow-attack";
+	public static final String FIELD_CROSSBOW_ATTACK = "crossbow-attack";
 	public static final String FIELD_SPAWN_WEIGHT = "spawn-weight";
 	public static final String FIELD_SPAWN_FILTER = "spawn-filter";
 	public static final String FIELD_VARIANT_APPEARANCE = "variant-appearance";
@@ -103,7 +105,7 @@ public final class MobConfigManager {
 	/** Standard parent-family spawn rule. */
 	public static final String FIELD_SPAWN_MOTHER = "spawn-mother";
 	public static final String FIELD_CHANCE = "chance";
-	public static final String FIELD_AMOUNT = "amount";
+	public static final String FIELD_BABY_AMOUNT = "baby-amount";
 	public static final String FIELD_MINIMUM = "minimum";
 	public static final String FIELD_MAXIMUM = "maximum";
 	public static final String FIELD_MOB_COMPONENTS = "mob-components";
@@ -120,6 +122,8 @@ public final class MobConfigManager {
 	public static final String FIELD_MOB_BEHAVIORS = "mob-behaviors";
 	public static final String FIELD_MOB_GOALS = "mob-goals";
 	public static final String FIELD_TARGET_PLAYER = "target-player";
+	public static final String FIELD_RANGED_ATTACK = "ranged-attack";
+	public static final String FIELD_PROJECTILE_SET_ON_FIRE = "projectile-set-on-fire";
 	public static final String FIELD_CONDITIONS = "conditions";
 	public static final String FIELD_PRIORITY = "priority";
 	public static final String FIELD_WEIGHT = "weight";
@@ -343,7 +347,7 @@ public final class MobConfigManager {
 		Map<String, JsonObject> defaults = new LinkedHashMap<>();
 		for (String key : List.of(FILE_BEE, FILE_BOGGED, FILE_CAVE_SPIDER, FILE_CREEPER, FILE_DROWNED,
 			FILE_HAG, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_SPIDER, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN)) {
 			defaults.put(key, buildNewDynamicEntityDefaults(key));
 		}
 		return defaults;
@@ -357,7 +361,7 @@ public final class MobConfigManager {
 		mobId = JSONAPIManager.normalizeRegistryIdentifierForJson(mobId);
 		JsonObject entityVariant = buildEntityVariantDefaults(key);
 		if (List.of(FILE_BOGGED, FILE_DROWNED, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER).contains(key)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN).contains(key)) {
 			entityVariant.getAsJsonObject(FIELD_MOB_COMPONENTS).addProperty(FIELD_WEAPON_DAMAGE, false);
 		}
 		JsonObject entityRoot = new JsonObject();
@@ -531,6 +535,7 @@ public final class MobConfigManager {
 				new JsonObject(), new JsonObject(), new JsonObject());
 			case FILE_HUSK -> buildHuskVariantDefaults();
 			case FILE_PARCHED -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:slowness", "minecraft-equipment-parched.json", "minecraft-entities-parched.json", "parched-jockey");
+			case FILE_PIGLIN -> buildPiglinVariantDefaults();
 			case FILE_SKELETON -> buildSkeletonVariantDefaults();
 			case FILE_SPIDER -> buildSpiderVariantDefaults();
 			case FILE_STRAY -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:weakness", "minecraft-equipment-stray.json", "minecraft-entities-stray.json", "stray-jockey");
@@ -627,8 +632,13 @@ public final class MobConfigManager {
 		if (keys == null) return goals;
 		for (String key : keys) {
 			int priority = "hurt-by-target".equals(key) ? 1 : "target-player".equals(key) ? 2 : "trident-attack".equals(key) ? 3 : 4;
-			int cooldown = "melee-attack".equals(key) || "ranged-attack".equals(key) || "trident-attack".equals(key) ? 20 : 0;
+			int cooldown = "melee-attack".equals(key) || FIELD_RANGED_ATTACK.equals(key) || "trident-attack".equals(key) ? 20 : 0;
 			addMobGoal(goals, key, true, priority, 100.0D, cooldown);
+			if (FIELD_RANGED_ATTACK.equals(key)) {
+				JsonObject projectileSetOnFire = new JsonObject();
+				projectileSetOnFire.addProperty(FIELD_ENABLED, false);
+				goals.getAsJsonObject(key).add(FIELD_PROJECTILE_SET_ON_FIRE, projectileSetOnFire);
+			}
 		}
 		return goals;
 	}
@@ -639,6 +649,12 @@ public final class MobConfigManager {
 		if (bowAttack) behavior.addProperty(FIELD_BOW_ATTACK, true);
 		if (tridentAttack) behavior.addProperty(FIELD_TRIDENT_ATTACK, true);
 		if (retaliate) behavior.addProperty(FIELD_RETALIATE_WHEN_HURT, true);
+		return behavior;
+	}
+
+	private static JsonObject buildCrossbowBehavior() {
+		JsonObject behavior = new JsonObject();
+		behavior.addProperty(FIELD_CROSSBOW_ATTACK, true);
 		return behavior;
 	}
 
@@ -684,6 +700,62 @@ public final class MobConfigManager {
 		addMobBabyComponent(baby, true);
 		addNestedVariant(variant, FIELD_BABY_GROUP, baby);
 		return variant;
+	}
+
+	private static JsonObject buildPiglinVariantDefaults() {
+		JsonObject variant = buildVariant(
+			buildComponents(28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
+				"minecraft-entities-piglin.json", "minecraft:golden_sword", null, 0, false, null, null),
+			buildSpawnRules(25.0D, "minecraft-equipment-piglin.json"), new JsonObject(),
+			buildGoals("hurt-by-target", "target-player", "melee-attack")
+		);
+
+		variant.add("spear-piglin", buildVariant(
+			buildComponents(28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
+				"minecraft-entities-piglin.json", "minecraft:copper-spear", null, 0, false, null, null),
+			buildSpawnRules(25.0D, "minecraft-equipment-piglin.json"), new JsonObject(),
+			buildGoals("hurt-by-target", "target-player", "melee-attack")
+		));
+		addPiglinAgeVariants(variant);
+		addPiglinAgeVariants(variant.getAsJsonObject("spear-piglin"));
+
+		JsonObject crossbowGoals = buildGoals("hurt-by-target", "target-player", "ranged-attack");
+		crossbowGoals.getAsJsonObject(FIELD_RANGED_ATTACK)
+			.getAsJsonObject(FIELD_PROJECTILE_SET_ON_FIRE)
+			.addProperty(FIELD_ENABLED, true);
+		variant.add("crossbow-piglin", buildVariant(
+			buildComponents(24.0D, null, null, 0.30D, null, null, null, 1.0D, 11, 6.0D, 0.7D, 20.0D, 10.0D,
+				"minecraft-entities-piglin.json", "minecraft:crossbow", null, 0, null, null, null),
+			buildSpawnRules(50.0D, "minecraft-equipment-piglin.json"), buildCrossbowBehavior(),
+			crossbowGoals
+		));
+		addPiglinAgeVariants(variant.getAsJsonObject("crossbow-piglin"), true);
+		return variant;
+	}
+
+	private static void addPiglinAgeVariants(JsonObject variant) {
+		addPiglinAgeVariants(variant, false);
+	}
+
+	private static void addPiglinAgeVariants(JsonObject variant, boolean crossbow) {
+		if (variant == null) {
+			return;
+		}
+		addNestedVariant(
+			variant,
+			FIELD_ADULT_GROUP,
+			buildVariant(new JsonObject(), buildSpawnRules(90.0D), new JsonObject(), new JsonObject())
+		);
+		JsonObject baby = buildVariant(
+			crossbow
+				? buildComponents(12.0D, null, null, 0.30D, null, null, null, null, 4, 3.0D, 0.7D, 20.0D, 10.0D,
+					 null, null, null, 0, null, null, null)
+				: buildComponents(14.0D, null, 3.5D, 0.30D, null, null, null, 1.0D, 5,
+					null, null, null, null, null, null, null, 0, null, null, null),
+			buildSpawnRules(10.0D), new JsonObject(), new JsonObject()
+		);
+		addMobBabyComponent(baby, true);
+		addNestedVariant(variant, FIELD_BABY_GROUP, baby);
 	}
 
 	private static JsonObject buildBowSkeletonVariantDefaults(
@@ -758,23 +830,23 @@ public final class MobConfigManager {
 		JsonObject variant = buildVariant(
 			buildComponents(12.0D, 1.0D, null, 0.27D, null, null, 0.10D, 1.0D, 7, null, null, null, null, null, null, null, 0, null, 3.0D, 30.0D),
 			buildSpawnRules(85.0D), buildCreeperBehavior(0.4D, 0.4D),
-			buildGoals("ranged-attack", "target-player", "hurt-by-target")
+			buildGoals("target-player", "hurt-by-target")
 		);
 		variant.add("charged-creeper", buildVariant(
 			buildComponents(16.0D, 2.0D, null, 0.30D, null, null, 0.20D, 1.0D, 11, null, null, null, null, null, null, null, 0, null, 5.0D, 25.0D),
 			buildSpawnRules(10.0D), buildCreeperBehavior(0.6D, 0.6D),
-			buildGoals("ranged-attack", "target-player", "hurt-by-target")
+			buildGoals("target-player", "hurt-by-target")
 		));
 		JsonObject fireAppearance = new JsonObject();
 		fireAppearance.addProperty(FIELD_APPEARANCE_ARMOR, "madoku-craft:textures/entity/creeper/fire-creeper-armor.png");
-		JsonObject fireRules = buildSpawnRules(10.0D);
+		JsonObject fireRules = buildSpawnRules(5.0D);
 		fireRules.add(FIELD_VARIANT_APPEARANCE, fireAppearance);
 		JsonObject fireBehavior = buildCreeperBehavior(0.0D, 0.0D);
 		fireBehavior.getAsJsonObject(FIELD_MOB_EXPLODE).addProperty(FIELD_FIRE, true);
 		variant.add("fire-creeper", buildVariant(
-			buildComponents(20.0D, 2.0D, null, 0.33D, null, null, 0.30D, 1.0D, 11, null, null, null, null, null, null, null, 0, null, 3.0D, 30.0D),
+			buildComponents(20.0D, 2.0D, null, 0.33D, null, null, 0.30D, 1.0D, 11, null, null, null, null, null, null, null, 0, null, 3.0D, 25.0D),
 			fireRules, fireBehavior,
-			buildGoals("ranged-attack", "target-player", "hurt-by-target")
+			buildGoals("target-player", "hurt-by-target")
 		));
 		return variant;
 	}
@@ -884,7 +956,7 @@ public final class MobConfigManager {
 			"minecraft-entities-skeleton.json", "minecraft:copper_spear", null, 0, false, null, null);
 		JsonObject debuffEffect = new JsonObject();
 		debuffEffect.addProperty(FIELD_EFFECT, "health-reduction");
-		debuffEffect.addProperty(FIELD_VALUE, 0.25D);
+		debuffEffect.addProperty(FIELD_VALUE, 0.20D);
 		debuffEffect.addProperty(FIELD_DURATION, 15.0D);
 		redComponents.add(FIELD_DEBUFF_EFFECT, debuffEffect);
 		variant.add("red-skeleton", buildVariant(redComponents, redRules, new JsonObject(), buildGoals("hurt-by-target", "target-player", "melee-attack")));
@@ -932,11 +1004,11 @@ public final class MobConfigManager {
 		albinoRules.add(FIELD_VARIANT_APPEARANCE, albinoAppearance);
 		JsonObject motherSpawn = new JsonObject();
 		motherSpawn.addProperty(FIELD_ENABLED, true);
-		motherSpawn.addProperty(FIELD_CHANCE, 0.9D);
+		motherSpawn.addProperty(FIELD_CHANCE, 1.0D);
 		JsonObject babyAmount = new JsonObject();
 		babyAmount.addProperty(FIELD_MINIMUM, 3);
 		babyAmount.addProperty(FIELD_MAXIMUM, 5);
-		motherSpawn.add(FIELD_AMOUNT, babyAmount);
+		motherSpawn.add(FIELD_BABY_AMOUNT, babyAmount);
 		albinoRules.add(FIELD_SPAWN_MOTHER, motherSpawn);
 
 		JsonObject albinoGoals = buildGoals("hurt-by-target", "target-player", "melee-attack");

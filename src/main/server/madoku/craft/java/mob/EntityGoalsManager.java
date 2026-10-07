@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -43,6 +44,23 @@ public final class EntityGoalsManager {
 	public static Boolean resolvePlayerTargetGoal(LivingEntity entity) {
 		JsonObject targetPlayer = resolveConfiguredGoalForRuntime(entity, MobConfigManager.FIELD_TARGET_PLAYER);
 		return targetPlayer == null ? null : readBoolean(targetPlayer, MobConfigManager.FIELD_ENABLED, false);
+	}
+
+	public static void applyProjectileFireSetting(LivingEntity attacker, Entity projectile) {
+		if (projectile != null) {
+			projectile.setRemainingFireTicks(isProjectileSetOnFireEnabled(attacker) ? 100 : 0);
+		}
+	}
+
+	private static boolean isProjectileSetOnFireEnabled(LivingEntity entity) {
+		JsonObject rangedAttack = resolveConfiguredGoalForRuntime(entity, MobConfigManager.FIELD_RANGED_ATTACK);
+		if (rangedAttack == null) {
+			return false;
+		}
+		JsonElement element = rangedAttack.get(MobConfigManager.FIELD_PROJECTILE_SET_ON_FIRE);
+		return element != null
+			&& element.isJsonObject()
+			&& readBoolean(element.getAsJsonObject(), MobConfigManager.FIELD_ENABLED, false);
 	}
 
 	public static boolean arePlayerTargetConditionsSatisfied(LivingEntity entity) {

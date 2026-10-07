@@ -32,7 +32,9 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.CrossbowAttackMob;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Drowned;
@@ -40,8 +42,10 @@ import net.minecraft.world.entity.monster.zombie.Husk;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.zombie.ZombieVillager;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.component.ChargedProjectiles;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -1092,6 +1096,7 @@ public final class EntityBehaviorsManager {
 			ShotVector shot = resolveShotVector(skeleton, arrow, target, accuracy);
 			arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
 			arrow.setCritArrow(false);
+			EntityGoalsManager.applyProjectileFireSetting(skeleton, arrow);
 			HelperProjectileAPIManager.setProjectileDamageOverride(arrow, (float) Math.max(0.0D, rangedDamage));
 			HelperProjectileAPIManager.trackManagedProjectile(arrow);
 			if (shot.guaranteedHit) {
@@ -2163,6 +2168,250 @@ public final class EntityBehaviorsManager {
 
 	}
 
+	public static final class PiglinBehavior {
+		private static final double DEFAULT_RANGED_DAMAGE = 6.0D;
+		private static final double DEFAULT_ATTACK_ACCURACY = 0.7D;
+		private static final int DEFAULT_ATTACK_INTERVAL_TICKS = 20;
+		private static final int DEFAULT_CHARGE_UP_TICKS = 10;
+
+		private PiglinBehavior() {
+		}
+
+		public static boolean shouldAllowCrossbowAttack(Mob mob) {
+			if (!(mob instanceof Piglin piglin)) {
+				return true;
+			}
+			JsonObject fileRoot = resolveFileRoot(piglin);
+			if (fileRoot.entrySet().isEmpty()) {
+				return true;
+			}
+			boolean overrideBehaviors = readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_BEHAVIORS, true);
+			boolean overrideGoals = readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_GOALS, true);
+			JsonObject activeRoot = resolveRuntimeRoot(piglin);
+			if (overrideBehaviors && !readBoolean(readObject(activeRoot, MobConfigManager.FIELD_MOB_BEHAVIORS), MobConfigManager.FIELD_CROSSBOW_ATTACK, false)) {
+				return false;
+			}
+			if (overrideGoals) {
+				JsonObject rangedGoal = readObject(readObject(activeRoot, MobConfigManager.FIELD_MOB_GOALS), MobConfigManager.FIELD_RANGED_ATTACK);
+				if (!readBoolean(rangedGoal, MobConfigManager.FIELD_ENABLED, false)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		public static boolean applyRangedPiglinCrossbowAttack(Piglin piglin, LivingEntity target) {
+			if (piglin == null || target == null || !target.isAlive() || piglin.level().isClientSide()
+				|| !MobEntityManager.isEnabled() || !isCrossbowAttackEnabled(piglin)
+				|| !(piglin.level() instanceof ServerLevel level)) {
+				return false;
+			}
+
+			InteractionHand hand = resolveCrossbowHand(piglin);
+			if (hand == null) {
+				return false;
+			}
+			ItemStack crossbow = piglin.getItemInHand(hand);
+			ChargedProjectiles charged = crossbow.get(DataComponents.CHARGED_PROJECTILES);
+			if (charged == null || charged.isEmpty()) {
+				return false;
+			}
+			ItemStack projectileStack = charged.itemCopies().findFirst().orElse(ItemStack.EMPTY);
+			if (projectileStack.isEmpty()) {
+				return false;
+			}
+
+			AbstractArrow arrow = ProjectileUtil.getMobArrow(piglin, projectileStack, 1.0F, crossbow);
+			if (arrow == null) {
+				return false;
+			}
+			JsonObject activeRoot = resolveRuntimeRoot(piglin);
+			JsonObject components = readObject(activeRoot, MobConfigManager.FIELD_MOB_COMPONENTS);
+			double accuracy = resolveScaledAttackAccuracy(
+				readDouble(components, MobConfigManager.FIELD_ATTACK_ACCURACY, DEFAULT_ATTACK_ACCURACY),
+				piglin
+			);
+			accuracy = MobFeatureAPIManager.reduceHostileRangedAccuracy(target, accuracy);
+			accuracy = MobRegionalDifficultyManager.resolveMobAttackAccuracyScaling(piglin, accuracy);
+			double baseDamage = readDouble(components, MobConfigManager.FIELD_RANGED_DAMAGE, DEFAULT_RANGED_DAMAGE);
+			double regionalDamage = MobRegionalDifficultyManager.resolveMobRangedDamageScaling(piglin, baseDamage);
+			double rangedDamage = MobEntityManager.resolveWorldDifficultyValueForRuntime(
+				piglin,
+				MobConfigManager.FIELD_RANGED_DAMAGE,
+				Math.max(0.0D, regionalDamage)
+			);
+
+			ShotVector shot = resolveShotVector(piglin, arrow, target, accuracy);
+			arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
+			arrow.setCritArrow(false);
+			arrow.setSoundEvent(SoundEvents.CROSSBOW_HIT);
+			EntityGoalsManager.applyProjectileFireSetting(piglin, arrow);
+			HelperProjectileAPIManager.setProjectileDamageOverride(arrow, (float) Math.max(0.0D, rangedDamage));
+			HelperProjectileAPIManager.trackManagedProjectile(arrow);
+			if (shot.guaranteedHit) {
+				HelperProjectileAPIManager.startProjectileHoming(arrow, target);
+			}
+
+			crossbow.set(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
+			((CrossbowAttackMob) piglin).onCrossbowAttackPerformed();
+			piglin.playSound(SoundEvents.CROSSBOW_SHOOT, 1.0F, 1.0F / (piglin.getRandom().nextFloat() * 0.4F + 0.8F));
+			level.addFreshEntity(arrow);
+			return true;
+		}
+
+		public static int resolveCrossbowChargeUpTicks(LivingEntity attacker, int fallback) {
+			if (!(attacker instanceof Piglin piglin) || !isCrossbowAttackEnabled(piglin)) {
+				return fallback;
+			}
+			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			return Math.max(1, (int) Math.round(readDouble(
+				components,
+				MobConfigManager.FIELD_CHARGE_INTERVAL,
+				DEFAULT_CHARGE_UP_TICKS
+			)));
+		}
+
+		public static int resolveCrossbowAttackIntervalTicks(Piglin piglin) {
+			if (!isCrossbowAttackEnabled(piglin)) {
+				return -1;
+			}
+			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			return Math.max(1, (int) Math.round(readDouble(components, MobConfigManager.FIELD_ATTACK_INTERVAL, DEFAULT_ATTACK_INTERVAL_TICKS)));
+		}
+
+		public static boolean isCustomMobDropsEnabled(LivingEntity entity) {
+			if (!(entity instanceof Piglin piglin) || entity.level().isClientSide() || !MobEntityManager.isEnabled()) {
+				return false;
+			}
+			JsonObject fileEntity = readObject(resolveFileRoot(piglin), MobConfigManager.FIELD_ENTITY);
+			return !fileEntity.entrySet().isEmpty()
+				&& readBoolean(fileEntity, MobConfigManager.FIELD_CUSTOM_MOB_DROPS, true);
+		}
+
+		public static String resolveMobDropsConfigReference(LivingEntity entity) {
+			if (!(entity instanceof Piglin piglin) || !MobEntityManager.isEnabled()) {
+				return "";
+			}
+			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			return readString(components, MobConfigManager.FIELD_MOB_DROPS, "");
+		}
+
+		private static boolean isCrossbowAttackEnabled(Piglin piglin) {
+			return piglin != null && !resolveRuntimeRoot(piglin).entrySet().isEmpty()
+				&& readBoolean(
+					readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_BEHAVIORS),
+					MobConfigManager.FIELD_CROSSBOW_ATTACK,
+					false
+				);
+		}
+
+		private static JsonObject resolveFileRoot(Piglin piglin) {
+			if (piglin == null || !MobEntityManager.isEnabled()
+				|| !MobConfigManager.FILE_PIGLIN.equals(MobEntityManager.resolveRuntimeMobFileKey(piglin))
+				|| !MobEntityManager.isMobFileEnabledForRuntime(MobConfigManager.FILE_PIGLIN)) {
+				return new JsonObject();
+			}
+			return MobEntityManager.resolveMobFileConfigRootForRuntime(MobConfigManager.FILE_PIGLIN);
+		}
+
+		private static JsonObject resolveRuntimeRoot(Piglin piglin) {
+			if (piglin == null || !MobEntityManager.isEnabled()
+				|| !MobConfigManager.FILE_PIGLIN.equals(MobEntityManager.resolveRuntimeMobFileKey(piglin))) {
+				return new JsonObject();
+			}
+			return MobEntityManager.resolveConfiguredEntityVariantForRuntime(piglin);
+		}
+
+		private static InteractionHand resolveCrossbowHand(Piglin piglin) {
+			if (piglin == null) {
+				return null;
+			}
+			if (piglin.getMainHandItem().is(Items.CROSSBOW)) {
+				return InteractionHand.MAIN_HAND;
+			}
+			if (piglin.getOffhandItem().is(Items.CROSSBOW)) {
+				return InteractionHand.OFF_HAND;
+			}
+			return null;
+		}
+
+		private static double resolveScaledAttackAccuracy(double base, Piglin piglin) {
+			boolean hardcore = piglin.level().getServer() != null && piglin.level().getServer().isHardcore();
+			int tier = switch (piglin.level().getDifficulty()) {
+				case PEACEFUL -> -2;
+				case EASY -> -1;
+				case NORMAL -> 0;
+				case HARD -> hardcore ? 2 : 1;
+			};
+			return Mth.clamp(base + (0.05D * tier), 0.0D, 1.0D);
+		}
+
+		private static ShotVector resolveShotVector(Piglin piglin, AbstractArrow arrow, LivingEntity target, double accuracy) {
+			double dx = target.getX() - piglin.getX();
+			double dz = target.getZ() - piglin.getZ();
+			double horizontal = Math.sqrt(dx * dx + dz * dz);
+			double dy = target.getY(1.0D / 3.0D) - arrow.getY() + (horizontal * 0.2D);
+			Vec3 desired = new Vec3(dx, dy, dz);
+			if (desired.lengthSqr() <= 1.0E-6D) {
+				return new ShotVector(desired, true);
+			}
+			double clampedAccuracy = Mth.clamp(accuracy, 0.0D, 1.0D);
+			if (piglin.getRandom().nextDouble() <= clampedAccuracy) {
+				return new ShotVector(desired, true);
+			}
+			Vec3 normalized = desired.normalize();
+			Vec3 lateral = normalized.cross(new Vec3(0.0D, 1.0D, 0.0D));
+			if (lateral.lengthSqr() <= 1.0E-6D) {
+				lateral = normalized.cross(new Vec3(1.0D, 0.0D, 0.0D));
+			}
+			lateral = lateral.normalize();
+			double missFactor = 1.0D - clampedAccuracy;
+			double lateralStrength = Mth.lerp(missFactor, 1.4D, 2.4D);
+			double verticalStrength = Mth.lerp(missFactor, 0.25D, 0.9D)
+				* (piglin.getRandom().nextBoolean() ? -1.0D : 1.0D);
+			Vec3 miss = lateral.scale((piglin.getRandom().nextBoolean() ? -1.0D : 1.0D) * lateralStrength)
+				.add(0.0D, verticalStrength, 0.0D)
+				.add(normalized.scale(-0.35D));
+			return new ShotVector(miss.lengthSqr() <= 1.0E-6D ? lateral : miss.normalize(), false);
+		}
+
+		private static JsonObject readObject(JsonObject root, String key) {
+			if (root == null || key == null) {
+				return new JsonObject();
+			}
+			JsonElement element = root.get(key);
+			return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+		}
+
+		private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean()
+				? element.getAsBoolean() : fallback;
+		}
+
+		private static double readDouble(JsonObject root, String key, double fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber()) {
+				return fallback;
+			}
+			try {
+				double value = element.getAsDouble();
+				return Double.isFinite(value) ? value : fallback;
+			} catch (RuntimeException ignored) {
+				return fallback;
+			}
+		}
+
+		private static String readString(JsonObject root, String key, String fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+				? element.getAsString() : fallback;
+		}
+
+		private record ShotVector(Vec3 vector, boolean guaranteedHit) {
+		}
+	}
+
 	public static final class HagBehavior {
 		private HagBehavior() {
 		}
@@ -2693,6 +2942,7 @@ public final class EntityBehaviorsManager {
 			ShotVector shot = resolveShotVector(skeleton, arrow, target, accuracy);
 			arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
 			arrow.setCritArrow(false);
+			EntityGoalsManager.applyProjectileFireSetting(skeleton, arrow);
 			HelperProjectileAPIManager.setProjectileDamageOverride(arrow, (float) Math.max(0.0D, rangedDamage));
 			HelperProjectileAPIManager.trackManagedProjectile(arrow);
 			if (shot.guaranteedHit) {
@@ -3185,9 +3435,7 @@ public final class EntityBehaviorsManager {
 			ShotVector shot = resolveShotVector(skeleton, arrow, target, accuracy);
 			arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
 			arrow.setCritArrow(false);
-			if (skeleton.getType() == MobEntityTypeAPIManager.WITHER_SKELETON) {
-				arrow.setRemainingFireTicks(0);
-			}
+			EntityGoalsManager.applyProjectileFireSetting(skeleton, arrow);
 			HelperProjectileAPIManager.setProjectileDamageOverride(arrow, (float) Math.max(0.0D, rangedDamage));
 			HelperProjectileAPIManager.trackManagedProjectile(arrow);
 			if (shot.guaranteedHit) {
@@ -3268,13 +3516,19 @@ public final class EntityBehaviorsManager {
 			}
 
 			String storedVariant = readStoredSkeletonVariantKey(skeleton);
+			JsonObject resolvedGroup = defaultGroup;
 			if (!storedVariant.isBlank()) {
 				JsonObject known = resolveSkeletonVariantRootByKey(fileConfigRoot, storedVariant);
 				if (!known.entrySet().isEmpty()) {
-					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
+					resolvedGroup = MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-			return defaultGroup;
+			return MobEntityManager.resolveNestedVariantForRuntime(
+				resolvedGroup,
+				skeleton,
+				spawnContext && world != null ? world.getRandom() : null,
+				spawnContext
+			);
 		}
 
 		private static JsonObject resolveSkeletonVariantRootByKey(JsonObject fileRoot, String variantKey) {
@@ -3505,7 +3759,7 @@ public final class EntityBehaviorsManager {
 				return;
 			}
 
-			JsonObject amount = readObject(familySpawn, MobConfigManager.FIELD_AMOUNT);
+			JsonObject amount = readObject(familySpawn, MobConfigManager.FIELD_BABY_AMOUNT);
 			int minimum = Math.max(0, (int) Math.floor(readDouble(amount, MobConfigManager.FIELD_MINIMUM, 0.0D)));
 			int maximum = Math.max(minimum, (int) Math.floor(readDouble(amount, MobConfigManager.FIELD_MAXIMUM, minimum)));
 			int count = minimum + (maximum > minimum
@@ -3954,6 +4208,7 @@ public final class EntityBehaviorsManager {
 			ShotVector shot = resolveShotVector(skeleton, arrow, target, accuracy);
 			arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
 			arrow.setCritArrow(false);
+			EntityGoalsManager.applyProjectileFireSetting(skeleton, arrow);
 			HelperProjectileAPIManager.setProjectileDamageOverride(arrow, (float) Math.max(0.0D, rangedDamage));
 			HelperProjectileAPIManager.trackManagedProjectile(arrow);
 			if (shot.guaranteedHit) {
@@ -4315,13 +4570,19 @@ public final class EntityBehaviorsManager {
 			}
 
 			String storedVariant = readStoredWitherSkeletonVariantKey(skeleton);
+			JsonObject resolvedGroup = defaultGroup;
 			if (!storedVariant.isBlank()) {
 				JsonObject known = resolveWitherSkeletonVariantRootByKey(fileConfigRoot, storedVariant);
 				if (!known.entrySet().isEmpty()) {
-					return MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
+					resolvedGroup = MobEntityManager.resolveVariantGroupRoot(defaultGroup, known);
 				}
 			}
-			return defaultGroup;
+			return MobEntityManager.resolveNestedVariantForRuntime(
+				resolvedGroup,
+				skeleton,
+				spawnContext && world != null ? world.getRandom() : null,
+				spawnContext
+			);
 		}
 
 		private static JsonObject resolveWitherSkeletonVariantRootByKey(JsonObject fileRoot, String variantKey) {

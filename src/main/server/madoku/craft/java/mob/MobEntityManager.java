@@ -36,6 +36,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Drowned;
@@ -227,6 +228,9 @@ public final class MobEntityManager {
 			return;
 		}
 		applyConfiguredEquipmentAtVanillaSpawn(mob, world.getRandom());
+		// mob-weapon is the canonical main-hand override. Apply it after the
+		// equipment profile so a profile's default empty main hand cannot erase it.
+		applyConfiguredMobWeaponAfterEquipment(mob);
 		applyConfiguredJockeyAtVanillaSpawn(mob, world, difficulty, spawnReason);
 		EntityComponentsManager.applyMobBabyComponent(mob);
 		if (isDifficultyScalingEligible(mob)) {
@@ -276,6 +280,13 @@ public final class MobEntityManager {
 		for (Map.Entry<EquipmentSlot, ItemStack> entry : selected.entrySet()) {
 			mob.setItemSlot(entry.getKey(), entry.getValue());
 		}
+	}
+
+	private static void applyConfiguredMobWeaponAfterEquipment(Mob mob) {
+		if (mob == null || !shouldApplyConfiguredComponentsForRuntime(mob)) {
+			return;
+		}
+		applyConfiguredMobWeapon(mob, resolveConfiguredEntityVariantForRuntime(mob));
 	}
 
 	private static void applyConfiguredJockeyAtVanillaSpawn(
@@ -1112,6 +1123,14 @@ public final class MobEntityManager {
 		return EntityBehaviorsManager.ZombieBehavior.resolveMobDropsConfigReference(entity);
 	}
 
+	public static boolean isPiglinCustomMobDropsEnabled(LivingEntity entity) {
+		return EntityBehaviorsManager.PiglinBehavior.isCustomMobDropsEnabled(entity);
+	}
+
+	public static String resolvePiglinMobDropsConfigReference(LivingEntity entity) {
+		return EntityBehaviorsManager.PiglinBehavior.resolveMobDropsConfigReference(entity);
+	}
+
 	private static boolean isRegionalDifficultyScalingEnabledForMob(LivingEntity entity) {
 		if (entity == null) {
 			return false;
@@ -1562,6 +1581,9 @@ public final class MobEntityManager {
 		if (attacker.getType() == MobEntityTypeAPIManager.BEE) {
 			return resolveBeeRootForRuntime(attacker);
 		}
+		if (attacker instanceof Piglin && isMobFileEnabled(MobConfigManager.FILE_PIGLIN)) {
+			return resolveConfiguredEntityVariantForRuntime(attacker);
+		}
 		if (attacker instanceof ZombieVillager zombieVillager) {
 			if (!isMobFileEnabled(MobConfigManager.FILE_ZOMBIE_VILLAGER)) {
 				return new JsonObject();
@@ -1803,7 +1825,7 @@ public final class MobEntityManager {
 	}
 
 	private static MobEffectInstance resolveConfiguredMobEffectInstance(JsonObject componentsRoot, MobEffectInstance fallbackEffect) {
-		if (componentsRoot == null || componentsRoot.entrySet().isEmpty() || fallbackEffect == null) {
+		if (componentsRoot == null || componentsRoot.entrySet().isEmpty()) {
 			return fallbackEffect;
 		}
 		JsonObject mobEffectRoot = readObject(componentsRoot, MobConfigManager.FIELD_MOB_EFFECT);
@@ -2213,6 +2235,9 @@ public final class MobEntityManager {
 		if (entity instanceof Zombie zombie) {
 			return zombie.isBaby();
 		}
+		if (entity instanceof Piglin piglin) {
+			return piglin.isBaby();
+		}
 		return entity instanceof AgeableMob ageableMob && ageableMob.isBaby();
 	}
 
@@ -2226,6 +2251,8 @@ public final class MobEntityManager {
 		}
 		if (entity instanceof Zombie zombie) {
 			zombie.setBaby(baby);
+		} else if (entity instanceof Piglin piglin) {
+			piglin.setBaby(baby);
 		} else if (entity instanceof AgeableMob ageableMob) {
 			ageableMob.setBaby(baby);
 		}
