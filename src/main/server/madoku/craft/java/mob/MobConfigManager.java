@@ -844,7 +844,7 @@ public final class MobConfigManager {
 		JsonObject fireBehavior = buildCreeperBehavior(0.0D, 0.0D);
 		fireBehavior.getAsJsonObject(FIELD_MOB_EXPLODE).addProperty(FIELD_FIRE, true);
 		variant.add("fire-creeper", buildVariant(
-			buildComponents(20.0D, 2.0D, null, 0.33D, null, null, 0.30D, 1.0D, 11, null, null, null, null, null, null, null, 0, null, 3.0D, 25.0D),
+			buildComponents(20.0D, 2.0D, null, 0.33D, null, null, 0.30D, 1.0D, 11, null, null, null, null, null, null, null, 0, null, 4.0D, 25.0D),
 			fireRules, fireBehavior,
 			buildGoals("target-player", "hurt-by-target")
 		));
