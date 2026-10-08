@@ -48,6 +48,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -814,6 +815,13 @@ public final class MobEntityManager {
 		}
 		JsonObject variant = resolveCreeperRuntimeVariantRoot(creeper, root);
 		JsonObject mobExplode = resolveCreeperMobExplodeRoot(variant);
+		if (readBoolean(mobExplode, MobConfigManager.FIELD_FIRE, false)
+			&& explosion.getBlockInteraction() == Explosion.BlockInteraction.KEEP) {
+			// ServerExplosion uses the positions calculated from this radius for both
+			// block interaction and fire placement. Keep those positions available
+			// when a fire creeper has no block-griefing radius.
+			return Math.max(0.0F, fallbackRadius);
+		}
 		Double griefPower = readOptionalDouble(mobExplode, MobConfigManager.FIELD_GREIF_POWER);
 		return (float) (Math.max(0.0F, fallbackRadius)
 			* Mth.clamp(griefPower == null ? 0.5D : griefPower, 0.0D, 1.0D));

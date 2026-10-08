@@ -32,3 +32,11 @@ It also modifies and adds certain mechanics to certain mobs.
 - Bees now search for crops in order to fertilize them.
 - Spiders were adjusted to be smaller, their size scales with regional and world difficulty.
 - Ranged drowned mobs also have an accuracy mechanic.
+
+**Mob Indicator:**
+
+- Displays a mob's health, armor, and debuffs.
+
+**Elite Variants**
+
+- Certain mobs have elite variants with unique behaviors and appearance.
