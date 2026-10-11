@@ -2084,6 +2084,7 @@ public final class MobEntityManager {
 		if (entity == null || fileKey == null || fileKey.isBlank()) {
 			return;
 		}
+		MobVariantAppearanceManager.invalidateRuntimeParticle(entity);
 		String prefix = "madoku-craft." + fileKey + ".variant:";
 		for (String tag : new ArrayList<>(entity.entityTags())) {
 			if (tag != null && tag.startsWith(prefix)) {

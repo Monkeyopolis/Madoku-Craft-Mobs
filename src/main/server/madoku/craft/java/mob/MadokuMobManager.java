@@ -18,12 +18,14 @@ public final class MadokuMobManager {
 	}
 
 	public static void onServerStarted(MinecraftServer server) {
+		EntityGoalsManager.clearRuntimeCache();
 		// Integrated servers can stop and restart inside the same JVM. The server-stop
 		// hook clears these runtime configuration snapshots, so reload them before
 		// entities begin spawning or loading again.
 		MobConfigManager.initialize();
 		WorldDifficultyConfigManager.initialize();
 		MobRegionalDifficultyManager.onServerStarted(server);
+		MobVariantAppearanceManager.onServerStarted();
 		MobIndicatorManager.onServerStarted(server);
 		MobEntityManager.onServerStarted(server);
 	}
@@ -35,6 +37,8 @@ public final class MadokuMobManager {
 	}
 
 	public static void onServerStopped() {
+		EntityGoalsManager.clearRuntimeCache();
+		MobVariantAppearanceManager.onServerStopped();
 		MobIndicatorManager.onServerStopped();
 		MobEntityManager.onServerStopped();
 		MobRegionalDifficultyManager.onServerStopped();

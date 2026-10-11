@@ -6,6 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import madoku.craft.java.core.enchant.EnchantBooksAPIManager;
 import madoku.craft.java.core.damage.DamageVulnerabilityFeatureAPIManager;
+import madoku.craft.java.core.runtime.AdaptiveIntervalAPIManager;
+import madoku.craft.java.core.time.TimeAPIManager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
@@ -18,6 +20,10 @@ import net.minecraft.world.entity.Mob;
 final class MobIndicatorManager {
 	private static final Map<UUID, LivingEntity> TRACKED_ENTITIES = new ConcurrentHashMap<>();
 	private static final Map<UUID, Float> LAST_VULNERABILITY = new ConcurrentHashMap<>();
+	private static final String ADAPTIVE_INTERVAL_ID = "madoku-mob-indicators";
+	private static final long MIN_SCAN_INTERVAL_TICKS = 1L;
+	private static final long MAX_SCAN_INTERVAL_TICKS = 4L;
+	private static long nextScanTick = Long.MIN_VALUE;
 	private static boolean initialized;
 
 	private MobIndicatorManager() {
@@ -31,6 +37,7 @@ final class MobIndicatorManager {
 		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
 			if (isManagedMob(entity)) {
 				TRACKED_ENTITIES.put(entity.getUUID(), (LivingEntity) entity);
+				nextScanTick = Long.MIN_VALUE;
 			}
 		});
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
@@ -46,40 +53,60 @@ final class MobIndicatorManager {
 	static void onServerStarted(MinecraftServer server) {
 		TRACKED_ENTITIES.clear();
 		LAST_VULNERABILITY.clear();
+		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
+		nextScanTick = Long.MIN_VALUE;
 	}
 
 	static void onServerTick(MinecraftServer server) {
 		if (server == null) return;
 		if (!MobConfigManager.isEnabled()) {
 			for (UUID entityUuid : LAST_VULNERABILITY.keySet()) clear(server, entityUuid);
+			nextScanTick = Long.MIN_VALUE;
+			return;
+		}
+		if (TRACKED_ENTITIES.isEmpty()) return;
+
+		long now = Math.max(0L, TimeAPIManager.getGameplayTicks());
+		if (nextScanTick != Long.MIN_VALUE && now < nextScanTick) return;
+		long interval = AdaptiveIntervalAPIManager.resolve(
+			ADAPTIVE_INTERVAL_ID,
+			server,
+			MIN_SCAN_INTERVAL_TICKS,
+			MAX_SCAN_INTERVAL_TICKS
+		);
+		nextScanTick = now + Math.max(1L, interval);
+
+		for (Map.Entry<UUID, LivingEntity> entry : TRACKED_ENTITIES.entrySet()) {
+			tickEntity(server, entry);
+		}
+	}
+
+	private static void tickEntity(MinecraftServer server, Map.Entry<UUID, LivingEntity> entry) {
+		LivingEntity entity = entry.getValue();
+		if (!isManagedMob(entity) || !entity.isAlive()) {
+			TRACKED_ENTITIES.remove(entry.getKey(), entity);
+			clear(server, entry.getKey());
 			return;
 		}
 
-		for (Map.Entry<UUID, LivingEntity> entry : TRACKED_ENTITIES.entrySet()) {
-			LivingEntity entity = entry.getValue();
-			if (!isManagedMob(entity) || !entity.isAlive()) {
-				TRACKED_ENTITIES.remove(entry.getKey(), entity);
-				clear(server, entry.getKey());
-				continue;
-			}
-
-			float vulnerabilityPercent = EnchantBooksAPIManager.getConfiguredSmiteVulnerabilityPercent(entity)
-				+ DamageVulnerabilityFeatureAPIManager.getDamageVulnerabilityPercent(entity);
-			Float previous = LAST_VULNERABILITY.get(entry.getKey());
-			if (vulnerabilityPercent <= 0.0F) {
-				if (previous != null) clear(server, entry.getKey());
-				continue;
-			}
-			if (previous == null || Math.abs(previous - vulnerabilityPercent) > 0.01F) {
-				LAST_VULNERABILITY.put(entry.getKey(), vulnerabilityPercent);
-				broadcast(server, entry.getKey(), vulnerabilityPercent);
-			}
+		Float previous = LAST_VULNERABILITY.get(entry.getKey());
+		float vulnerabilityPercent = EnchantBooksAPIManager.getConfiguredSmiteVulnerabilityPercent(entity)
+			+ DamageVulnerabilityFeatureAPIManager.getDamageVulnerabilityPercent(entity);
+		if (vulnerabilityPercent <= 0.0F) {
+			if (previous != null) clear(server, entry.getKey());
+			return;
+		}
+		if (previous == null || Math.abs(previous - vulnerabilityPercent) > 0.01F) {
+			LAST_VULNERABILITY.put(entry.getKey(), vulnerabilityPercent);
+			broadcast(server, entry.getKey(), vulnerabilityPercent);
 		}
 	}
 
 	static void onServerStopped() {
 		TRACKED_ENTITIES.clear();
 		LAST_VULNERABILITY.clear();
+		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
+		nextScanTick = Long.MIN_VALUE;
 	}
 
 	private static boolean isManagedMob(Entity entity) {

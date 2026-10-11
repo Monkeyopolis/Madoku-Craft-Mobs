@@ -12,17 +12,24 @@ import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 
 /** Resolves configured variant textures and synchronizes them to connected clients. */
 public final class MobVariantAppearanceManager {
 	public static final String SYNC_ID = "mobs.variant-appearance";
 
 	private static volatile Map<String, VariantAppearance> clientAppearances = Map.of();
+	private static final Map<UUID, ParticleResolution> RUNTIME_PARTICLES = new ConcurrentHashMap<>();
+	private static final ParticleResolution NO_PARTICLE = new ParticleResolution(null);
 	private static boolean initialized;
 
 	private MobVariantAppearanceManager() {
@@ -39,8 +46,23 @@ public final class MobVariantAppearanceManager {
 			MobVariantAppearanceManager::applyClientSnapshot,
 			MobVariantAppearanceManager::resetClientAppearances
 		);
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> RUNTIME_PARTICLES.remove(entity.getUUID()));
 		clientAppearances = collectAppearances(MobConfigManager.getRuntimeMobFiles());
 		initialized = true;
+	}
+
+	static void onServerStarted() {
+		RUNTIME_PARTICLES.clear();
+	}
+
+	static void onServerStopped() {
+		RUNTIME_PARTICLES.clear();
+	}
+
+	static void invalidateRuntimeParticle(LivingEntity entity) {
+		if (entity != null) {
+			RUNTIME_PARTICLES.remove(entity.getUUID());
+		}
 	}
 
 	public static VariantAppearance resolve(String mobId, String variantKey) {
@@ -79,19 +101,9 @@ public final class MobVariantAppearanceManager {
 		if (mob == null || mob.isRemoved() || mob.tickCount % 4 != 0 || !(mob.level() instanceof ServerLevel serverLevel)) {
 			return;
 		}
-		String fileKey = MobEntityManager.resolveRuntimeMobFileKey(mob);
-		if (fileKey.isBlank() || !MobEntityManager.isMobFileEnabledForRuntime(fileKey)) {
-			return;
-		}
-		String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(mob);
-		if (variantKey.isBlank()) {
-			return;
-		}
-		Identifier mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
-		if (mobId == null) {
-			return;
-		}
-		ParticleOptions particle = resolve(mobId.toString(), variantKey).particles();
+		ParticleOptions particle = RUNTIME_PARTICLES
+			.computeIfAbsent(mob.getUUID(), ignored -> resolveRuntimeParticle(mob))
+			.particle();
 		if (particle == null) {
 			return;
 		}
@@ -106,6 +118,23 @@ public final class MobVariantAppearanceManager {
 			0.28D,
 			0.0D
 		);
+	}
+
+	private static ParticleResolution resolveRuntimeParticle(Mob mob) {
+		String fileKey = MobEntityManager.resolveRuntimeMobFileKey(mob);
+		if (fileKey.isBlank() || !MobEntityManager.isMobFileEnabledForRuntime(fileKey)) {
+			return NO_PARTICLE;
+		}
+		String variantKey = MobEntityManager.resolveConfiguredVariantKeyForRuntime(mob);
+		if (variantKey.isBlank()) {
+			return NO_PARTICLE;
+		}
+		Identifier mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+		if (mobId == null) {
+			return NO_PARTICLE;
+		}
+		ParticleOptions particle = resolve(mobId.toString(), variantKey).particles();
+		return particle == null ? NO_PARTICLE : new ParticleResolution(particle);
 	}
 
 	private static void applyClientSnapshot(String snapshot) {
@@ -135,6 +164,7 @@ public final class MobVariantAppearanceManager {
 
 	private static void resetClientAppearances() {
 		clientAppearances = collectAppearances(MobConfigManager.getRuntimeMobFiles());
+		RUNTIME_PARTICLES.clear();
 	}
 
 	private static Map<String, VariantAppearance> collectAppearances(Map<String, JsonObject> files) {
@@ -339,5 +369,8 @@ public final class MobVariantAppearanceManager {
 		public boolean isEmpty() {
 			return texture == null && eyes == null && armor == null && particles == null;
 		}
+	}
+
+	private record ParticleResolution(ParticleOptions particle) {
 	}
 }

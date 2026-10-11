@@ -4,19 +4,27 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.lang.ref.WeakReference;
+import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
 
 /** Shared runtime policy for configured AI goals. */
 public final class EntityGoalsManager {
 	private static final Map<GoalCooldownKey, Long> GOAL_COOLDOWNS = new ConcurrentHashMap<>();
+	private static final Map<Goal, WeakReference<Mob>> GOAL_OWNER_CACHE =
+		Collections.synchronizedMap(new WeakHashMap<>());
+	private static final Map<Goal, CachedGoalSettings> GOAL_SETTINGS_CACHE =
+		Collections.synchronizedMap(new WeakHashMap<>());
 
 	private EntityGoalsManager() {
 	}
@@ -120,21 +128,43 @@ public final class EntityGoalsManager {
 		}
 	}
 
+	static void clearRuntimeCache() {
+		GOAL_OWNER_CACHE.clear();
+		GOAL_SETTINGS_CACHE.clear();
+	}
+
 	public static Mob resolveOwningMob(Goal goal) {
-		Class<?> type = goal == null ? null : goal.getClass();
-		while (type != null && type != Object.class) {
-			for (Field field : type.getDeclaredFields()) {
-				if (Modifier.isStatic(field.getModifiers()) || !Mob.class.isAssignableFrom(field.getType())) continue;
-				try {
-					if (!field.trySetAccessible()) continue;
-					Object value = field.get(goal);
-					if (value instanceof Mob mob) return mob;
-				} catch (IllegalAccessException ignored) {
-				}
-			}
-			type = type.getSuperclass();
+		if (goal == null) {
+			return null;
 		}
-		return null;
+		WeakReference<Mob> cachedReference = GOAL_OWNER_CACHE.get(goal);
+		Mob cachedMob = cachedReference == null ? null : cachedReference.get();
+		if (cachedMob != null) {
+			return cachedMob;
+		}
+
+		Mob resolved = resolveOwningMobUncached(goal);
+		if (resolved != null) {
+			GOAL_OWNER_CACHE.put(goal, new WeakReference<>(resolved));
+		}
+		return resolved;
+	}
+
+	private static Mob resolveOwningMobUncached(Goal goal) {
+			Class<?> type = goal.getClass();
+			while (type != null && type != Object.class) {
+				for (Field field : type.getDeclaredFields()) {
+					if (Modifier.isStatic(field.getModifiers()) || !Mob.class.isAssignableFrom(field.getType())) continue;
+					try {
+						if (!field.trySetAccessible()) continue;
+						Object value = field.get(goal);
+						if (value instanceof Mob mob) return mob;
+					} catch (IllegalAccessException ignored) {
+					}
+				}
+				type = type.getSuperclass();
+			}
+			return null;
 	}
 
 	static String resolveGoalKey(Goal goal) {
@@ -150,17 +180,32 @@ public final class EntityGoalsManager {
 	}
 
 	private static GoalSettings resolveSettings(Mob mob, Goal goal) {
-		if (mob == null || goal == null) return null;
+		if (mob == null || goal == null || !MobConfigManager.isEnabled()) return null;
+		RuntimeGoalState state = resolveRuntimeGoalState(mob);
+		CachedGoalSettings cached = GOAL_SETTINGS_CACHE.get(goal);
+		if (cached != null && cached.owner().get() == mob && cached.state().equals(state)) {
+			return cached.settings();
+		}
+
 		String key = resolveGoalKey(goal);
 		JsonObject definition = resolveConfiguredGoalForRuntime(mob, key);
-		if (definition == null) return null;
-		return new GoalSettings(
+		GoalSettings settings = definition == null ? null : new GoalSettings(
 			key,
 			readBoolean(definition, MobConfigManager.FIELD_ENABLED, false),
 			readInt(definition, MobConfigManager.FIELD_PRIORITY, Integer.MAX_VALUE),
 			Math.max(0.0D, Math.min(100.0D, readDouble(definition, MobConfigManager.FIELD_WEIGHT, 100.0D))),
 			Math.max(0, readInt(definition, MobConfigManager.FIELD_COOLDOWN_TICKS, 0)),
 			definition
+		);
+		GOAL_SETTINGS_CACHE.put(goal, new CachedGoalSettings(new WeakReference<>(mob), state, settings));
+		return settings;
+	}
+
+	private static RuntimeGoalState resolveRuntimeGoalState(Mob mob) {
+		return new RuntimeGoalState(
+			mob.entityTags().hashCode(),
+			MobEntityManager.isBabyVariantEntityForRuntime(mob),
+			mob instanceof Creeper creeper && creeper.isPowered()
 		);
 	}
 
@@ -210,6 +255,12 @@ public final class EntityGoalsManager {
 	}
 
 	private record GoalSettings(String key, boolean enabled, int priority, double weight, int cooldownTicks, JsonObject definition) {
+	}
+
+	private record CachedGoalSettings(WeakReference<Mob> owner, RuntimeGoalState state, GoalSettings settings) {
+	}
+
+	private record RuntimeGoalState(int entityTagsHash, boolean baby, boolean powered) {
 	}
 
 	private record GoalCooldownKey(UUID entityId, String goalKey) {

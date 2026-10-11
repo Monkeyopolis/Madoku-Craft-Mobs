@@ -11,6 +11,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MobVariantParticlesMixin {
 	@Inject(method = "tick", at = @At("TAIL"))
 	private void madokuCraft$emitVariantParticles(CallbackInfo callbackInfo) {
-		MobVariantAppearanceManager.emitConfiguredParticles((Mob) (Object) this);
+		Mob mob = (Mob) (Object) this;
+		if ((mob.tickCount & 3) != 0) {
+			return;
+		}
+		MobVariantAppearanceManager.emitConfiguredParticles(mob);
 	}
 }

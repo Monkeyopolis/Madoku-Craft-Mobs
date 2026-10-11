@@ -45,6 +45,8 @@ public abstract class WrappedGoalMixin {
 	private void madokuCraft$applyConfiguredCooldown(CallbackInfo callbackInfo) {
 		if (!isRunning) return;
 		Mob mob = EntityGoalsManager.resolveOwningMob(goal);
-		if (mob != null) EntityGoalsManager.onGoalStopped(mob, goal);
+		if (mob != null) {
+			EntityGoalsManager.onGoalStopped(mob, goal);
+		}
 	}
 }
