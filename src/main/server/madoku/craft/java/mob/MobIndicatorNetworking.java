@@ -12,4 +12,11 @@ final class MobIndicatorNetworking {
 		ServerPlayNetworking.send(player, payload);
 		return true;
 	}
+
+	static boolean sendSettings(ServerPlayer player, boolean enabled) {
+		MobIndicatorSettingsPayloadManager payload = new MobIndicatorSettingsPayloadManager(enabled);
+		if (player == null || !ServerPlayNetworking.canSend(player, payload.type())) return false;
+		ServerPlayNetworking.send(player, payload);
+		return true;
+	}
 }

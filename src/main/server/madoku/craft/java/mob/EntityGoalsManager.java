@@ -72,11 +72,15 @@ public final class EntityGoalsManager {
 	}
 
 	public static boolean arePlayerTargetConditionsSatisfied(LivingEntity entity) {
+		return arePlayerTargetConditionsSatisfied(entity, null);
+	}
+
+	public static boolean arePlayerTargetConditionsSatisfied(LivingEntity entity, LivingEntity target) {
 		if (!Boolean.TRUE.equals(resolvePlayerTargetGoal(entity))) {
 			return false;
 		}
 		JsonObject targetPlayer = resolveConfiguredGoalForRuntime(entity, MobConfigManager.FIELD_TARGET_PLAYER);
-		return EntityConditionsManager.areSatisfied(entity, targetPlayer);
+		return EntityConditionsManager.areSatisfied(entity, targetPlayer, target);
 	}
 
 	public static boolean shouldIgnorePlayerTarget(Mob attacker, LivingEntity target) {
@@ -84,7 +88,7 @@ public final class EntityGoalsManager {
 			return false;
 		}
 		Boolean configured = resolvePlayerTargetGoal(attacker);
-		return configured != null && (!configured || !arePlayerTargetConditionsSatisfied(attacker));
+		return configured != null && (!configured || !arePlayerTargetConditionsSatisfied(attacker, target));
 	}
 
 	public static boolean shouldAllowCanUse(Mob mob, Goal goal) {
@@ -170,7 +174,9 @@ public final class EntityGoalsManager {
 	static String resolveGoalKey(Goal goal) {
 		if (goal == null) return "";
 		String name = goal.getClass().getSimpleName();
-		if (name.contains("SpiderTarget") || name.contains("NearestAttackableTarget")) return MobConfigManager.FIELD_TARGET_PLAYER;
+		if (name.contains("SpiderTarget") || name.contains("NearestAttackableTarget") || name.contains("EndermanLookForPlayer")) {
+			return MobConfigManager.FIELD_TARGET_PLAYER;
+		}
 		if (name.contains("HurtByTarget")) return "hurt-by-target";
 		if (name.contains("RangedBow") || name.contains("Crossbow")) return "ranged-attack";
 		if (name.contains("Trident")) return MobConfigManager.FIELD_TRIDENT_ATTACK;

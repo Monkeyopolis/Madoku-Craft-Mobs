@@ -7,10 +7,15 @@ import net.minecraft.world.entity.monster.Monster;
 
 /** Central relationship policy for configured neutral and hostile entities. */
 public final class EntityRelationshipManager {
+	private static final ThreadLocal<Boolean> FORCED_TARGET_CHANGE = ThreadLocal.withInitial(() -> false);
+
 	private EntityRelationshipManager() {
 	}
 
 	public static boolean canSetTarget(Mob attacker, LivingEntity target) {
+		if (Boolean.TRUE.equals(FORCED_TARGET_CHANGE.get())) {
+			return true;
+		}
 		if (attacker == null || target == null || attacker == target || !target.isAlive()) {
 			return target == null;
 		}
@@ -28,11 +33,28 @@ public final class EntityRelationshipManager {
 		}
 		Boolean configuredPlayerTarget = EntityGoalsManager.resolvePlayerTargetGoal(attacker);
 		if (Boolean.TRUE.equals(configuredPlayerTarget)
-			&& EntityGoalsManager.arePlayerTargetConditionsSatisfied(attacker)) {
+			&& EntityGoalsManager.arePlayerTargetConditionsSatisfied(attacker, target)) {
 			return true;
 		}
 		return EntityGoalsManager.isGoalEnabledForRuntime(attacker, "hurt-by-target")
 			&& (target == attacker.getLastHurtByMob() || target == attacker.getLastHurtByPlayer());
+	}
+
+	static void forceSetTargetFromConfiguredAnger(Mob mob, LivingEntity target) {
+		if (mob == null) {
+			return;
+		}
+		boolean wasForced = Boolean.TRUE.equals(FORCED_TARGET_CHANGE.get());
+		FORCED_TARGET_CHANGE.set(true);
+		try {
+			mob.setTarget(target);
+		} finally {
+			if (wasForced) {
+				FORCED_TARGET_CHANGE.set(true);
+			} else {
+				FORCED_TARGET_CHANGE.remove();
+			}
+		}
 	}
 
 	public static void handleDamage(LivingEntity victim, LivingEntity attacker) {

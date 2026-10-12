@@ -102,7 +102,7 @@ public final class RegionalDifficultyConfigManager {
 		Map<String, JsonObject> defaults = new LinkedHashMap<>();
 		for (String fileKey : new String[] {
 			"bee", "bogged", "cave-spider", "creeper", "drowned", "hag", "husk", "parched",
-			"piglin", "skeleton", "spider", "stray", "wither-skeleton", "zombie", "zombie-villager"
+			"piglin", "enderman", "skeleton", "spider", "stray", "wither-skeleton", "zombie", "zombie-villager"
 		}) {
 			defaults.put(fileKey, buildMobScalingDefaultsForKey(
 				fileKey, health, movementSpeed, armor, damage, knockbackResistance, experienceDrop

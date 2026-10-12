@@ -33,6 +33,7 @@ public final class MobConfigManager {
 	public static final String FIELD_OVERRIDE_COMPONENTS = "override-components";
 	public static final String FIELD_OVERRIDE_BEHAVIORS = "override-behaviors";
 	public static final String FIELD_ENTITY = "entity";
+	public static final String FIELD_MOB_INDICATOR = "mob-indicator";
 	public static final String FIELD_MOB_ID = "mob-id";
 	public static final String FIELD_WORLD_DIFFICULTY_SCALING = "world-difficulty-scaling";
 	public static final String FIELD_REGIONAL_DIFFICULTY_SCALING_NEW = "regional-difficulty-scaling";
@@ -47,6 +48,7 @@ public final class MobConfigManager {
 	public static final String TYPE_FLAT = "flat";
 	private static volatile boolean initialized;
 	private static volatile RuntimeConfig runtimeConfig = RuntimeConfig.disabled();
+	private static volatile boolean mobIndicatorEnabled;
 
 	public static final String FIELD_ENABLED = "enabled";
 
@@ -80,6 +82,7 @@ public final class MobConfigManager {
 	public static final String FILE_HAG = "hag";
 	public static final String FILE_BEE = "bee";
 	public static final String FILE_PIGLIN = "piglin";
+	public static final String FILE_ENDERMAN = "enderman";
 
 	public static final String FIELD_CAN_PICK_UP_LOOT = "can-pick-up-loot";
 	public static final String FIELD_TRIDENT_ATTACK = "trident-attack";
@@ -118,8 +121,11 @@ public final class MobConfigManager {
 	public static final String FIELD_ITEM = "item";
 	public static final String FIELD_EFFECT = "effect";
 	public static final String FIELD_DURATION = "duration";
+	public static final String FIELD_COOLDOWN = "cooldown";
 	public static final String FIELD_WEAPON_DAMAGE = "weapon-damage";
 	public static final String FIELD_MOB_BEHAVIORS = "mob-behaviors";
+	public static final String FIELD_BROADCAST_ANGER = "broadcast-anger";
+	public static final String FIELD_RADIUS = "radius";
 	public static final String FIELD_MOB_GOALS = "mob-goals";
 	public static final String FIELD_TARGET_PLAYER = "target-player";
 	public static final String FIELD_RANGED_ATTACK = "ranged-attack";
@@ -130,10 +136,13 @@ public final class MobConfigManager {
 	public static final String FIELD_COOLDOWN_TICKS = "cooldown-ticks";
 	public static final String FIELD_CONDITION = "condition";
 	public static final String FIELD_DISTANCE = "distance";
+	public static final String FIELD_LINE_OF_SIGHT = "line-of-sight";
 	public static final String FIELD_SPEED = "speed";
 	public static final String FIELD_FOLLOW_PARENT = "follow-parent";
 	public static final String CONDITION_BABY_NEARBY = "baby-nearby";
 	public static final String CONDITION_LIGHT_LEVEL = "light-level";
+	public static final String CONDITION_PLAYER_NEARBY = "player-nearby";
+	public static final String CONDITION_EYES_LOOKED_AT = "eyes-looked-at";
 	public static final String FIELD_PROTECT_PARENT_WHEN_HURT = "protect-parent-when-hurt";
 	public static final String FIELD_RETALIATE_WHEN_HURT = "retaliate-when-hurt";
 	public static final String FIELD_CALLS_REINFORCEMENTS_WHEN_HURT = "calls-reinforcements-when-hurt";
@@ -239,6 +248,7 @@ public final class MobConfigManager {
 			initialized = true;
 		} catch (IOException | RuntimeException exception) {
 			runtimeConfig = RuntimeConfig.disabled();
+			mobIndicatorEnabled = false;
 			MobDefinitionRegistry.rebuild(Map.of());
 			initialized = false;
 		}
@@ -264,11 +274,16 @@ public final class MobConfigManager {
 	public static synchronized void reset() {
 		initialized = false;
 		runtimeConfig = RuntimeConfig.disabled();
+		mobIndicatorEnabled = false;
 		MobDefinitionRegistry.rebuild(Map.of());
 	}
 
 	public static boolean isEnabled() {
 		return runtimeConfig.enabled();
+	}
+
+	public static boolean isMobIndicatorEnabled() {
+		return runtimeConfig.enabled() && mobIndicatorEnabled;
 	}
 
 	static Map<String, JsonObject> getRuntimeMobFiles() {
@@ -283,6 +298,10 @@ public final class MobConfigManager {
 		Path settingsFile = mobsRootDirectory.resolve(ENTITIES_SETTINGS_FILE + ".json");
 		JsonObject settingsRoot = JSONFormatAPIManager.ensureManagedFile(settingsFile, buildEntitySystemDefaults());
 		boolean entitiesEnabled = readBoolean(settingsRoot, FIELD_ENABLED, true);
+		JsonElement indicatorElement = settingsRoot.get(FIELD_MOB_INDICATOR);
+		boolean configuredMobIndicatorEnabled = indicatorElement != null && indicatorElement.isJsonObject()
+			? readBoolean(indicatorElement.getAsJsonObject(), FIELD_ENABLED, true)
+			: true;
 		Path entityDirectory = getOrCreateEntityDirectory();
 		Map<String, JsonObject> files = new LinkedHashMap<>();
 		if (Files.isDirectory(entityDirectory)) {
@@ -296,6 +315,7 @@ public final class MobConfigManager {
 		runtimeConfig = systemEnabled && entitiesEnabled
 			? new RuntimeConfig(true, Map.copyOf(files))
 			: RuntimeConfig.disabled();
+		mobIndicatorEnabled = configuredMobIndicatorEnabled;
 		MobDefinitionRegistry.rebuild(runtimeConfig.files());
 	}
 
@@ -305,7 +325,10 @@ public final class MobConfigManager {
 	}
 
 	public static JsonObject buildEntitySystemDefaults() {
-		return JSONFormatAPIManager.object().put(FIELD_ENABLED, true).build();
+		return JSONFormatAPIManager.object()
+			.put(FIELD_ENABLED, true)
+			.object(FIELD_MOB_INDICATOR, indicator -> indicator.put(FIELD_ENABLED, true))
+			.build();
 	}
 
 	public static JsonObject buildMobSystemDefaults() {
@@ -347,7 +370,7 @@ public final class MobConfigManager {
 		Map<String, JsonObject> defaults = new LinkedHashMap<>();
 		for (String key : List.of(FILE_BEE, FILE_BOGGED, FILE_CAVE_SPIDER, FILE_CREEPER, FILE_DROWNED,
 			FILE_HAG, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_SPIDER, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_ENDERMAN)) {
 			defaults.put(key, buildNewDynamicEntityDefaults(key));
 		}
 		return defaults;
@@ -530,6 +553,7 @@ public final class MobConfigManager {
 			case FILE_CAVE_SPIDER -> buildCaveSpiderVariantDefaults();
 			case FILE_CREEPER -> buildCreeperVariantDefaults();
 			case FILE_DROWNED -> buildDrownedVariantDefaults();
+			case FILE_ENDERMAN -> buildEndermanVariantDefaults();
 			case FILE_HAG -> buildVariant(
 				buildComponents(40.0D, 1.0D, null, 0.25D, null, null, 0.2D, null, 11, null, null, null, null, null, null, null, 0, null, null, null),
 				new JsonObject(), new JsonObject(), new JsonObject());
@@ -859,6 +883,82 @@ public final class MobConfigManager {
 		explode.addProperty(FIELD_GREIF_POWER, griefPower);
 		behavior.add(FIELD_MOB_EXPLODE, explode);
 		return behavior;
+	}
+
+	private static JsonObject buildEndermanVariantDefaults() {
+		JsonObject regularGoals = buildGoals("hurt-by-target", "target-player", "melee-attack");
+		JsonArray regularConditions = new JsonArray();
+		JsonObject eyesLookedAt = new JsonObject();
+		eyesLookedAt.addProperty(FIELD_CONDITION, CONDITION_EYES_LOOKED_AT);
+		regularConditions.add(eyesLookedAt);
+		regularGoals.getAsJsonObject(FIELD_TARGET_PLAYER).add(FIELD_CONDITIONS, regularConditions);
+
+		JsonObject regularBehavior = new JsonObject();
+		JsonObject randomTeleport = new JsonObject();
+		randomTeleport.addProperty(FIELD_ENABLED, true);
+		regularBehavior.add("random-teleport", randomTeleport);
+
+		JsonObject regularComponents = buildComponents(
+			40.0D, 0.0D, 10.0D, 0.30D, null, null, 0.0D, 1.0D, 11,
+			null, null, null, null, "minecraft-entities-enderman.json", null, null, 0, null, null, null
+		);
+		regularComponents.addProperty(FIELD_WEAPON_DAMAGE, false);
+		JsonArray regularTypes = new JsonArray();
+		regularTypes.add("enderman");
+		regularTypes.add(ENTITY_TYPE_MOB);
+		regularTypes.add(ENTITY_TYPE_NEUTRAL);
+		regularComponents.add(FIELD_ENTITY_TYPE, regularTypes);
+
+		JsonObject variant = buildVariant(
+			regularComponents,
+			buildSpawnRules(95.0D),
+			regularBehavior,
+			regularGoals
+		);
+
+		JsonObject corruptedAppearance = new JsonObject();
+		corruptedAppearance.addProperty(FIELD_APPEARANCE_TEXTURE,
+			"madoku-craft:textures/entity/enderman/corrupted-enderman.png");
+		corruptedAppearance.addProperty(FIELD_APPEARANCE_EYES,
+			"madoku-craft:textures/entity/enderman/corrupted-enderman-eyes.png");
+		JsonObject corruptedRules = buildSpawnRules(5.0D);
+		corruptedRules.add(FIELD_VARIANT_APPEARANCE, corruptedAppearance);
+
+		JsonObject corruptedBehavior = new JsonObject();
+		JsonObject corruptedRandomTeleport = new JsonObject();
+		corruptedRandomTeleport.addProperty(FIELD_ENABLED, true);
+		corruptedBehavior.add("random-teleport", corruptedRandomTeleport);
+		JsonObject teleportTarget = new JsonObject();
+		teleportTarget.addProperty(FIELD_ENABLED, true);
+		teleportTarget.addProperty(FIELD_COOLDOWN, 20);
+		teleportTarget.addProperty(FIELD_RADIUS, 4.0D);
+		corruptedBehavior.add("teleport-target", teleportTarget);
+		JsonObject broadcastAnger = new JsonObject();
+		broadcastAnger.addProperty(FIELD_ENABLED, true);
+		broadcastAnger.addProperty(FIELD_DURATION, 30);
+		broadcastAnger.addProperty(FIELD_RADIUS, 24.0D);
+		corruptedBehavior.add(FIELD_BROADCAST_ANGER, broadcastAnger);
+
+		JsonObject corruptedGoals = buildGoals("hurt-by-target", "target-player", "melee-attack");
+
+		JsonObject corruptedComponents = buildComponents(
+			60.0D, 0.0D, 5.0D, 0.30D, null, null, 0.0D, 1.0D, 15,
+			null, null, null, null, "minecraft-entities-enderman.json", null, null, 0, null, null, null
+		);
+		corruptedComponents.addProperty(FIELD_WEAPON_DAMAGE, false);
+		JsonArray corruptedTypes = new JsonArray();
+		corruptedTypes.add("enderman");
+		corruptedTypes.add(ENTITY_TYPE_MOB);
+		corruptedTypes.add(ENTITY_TYPE_HOSTILE);
+		corruptedComponents.add(FIELD_ENTITY_TYPE, corruptedTypes);
+
+		variant.add("corrupted-enderman", buildVariant(
+			corruptedComponents,
+			corruptedRules,
+			corruptedBehavior,
+			corruptedGoals
+		));
+		return variant;
 	}
 
 	private static JsonObject buildDrownedVariantDefaults() {

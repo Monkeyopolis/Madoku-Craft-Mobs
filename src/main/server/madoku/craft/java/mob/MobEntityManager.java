@@ -160,6 +160,7 @@ public final class MobEntityManager {
 		EntityBehaviorsManager.StrayBehavior.resetRuntimeState();
 		EntityBehaviorsManager.BoggedBehavior.resetRuntimeState();
 		EntityBehaviorsManager.ParchedBehavior.resetRuntimeState();
+		EntityBehaviorsManager.EndermanBehavior.resetRuntimeState();
 		nextRuntimeTick = Long.MIN_VALUE;
 	}
 
@@ -168,9 +169,11 @@ public final class MobEntityManager {
 		long now = Math.max(0L, madoku.craft.java.core.time.TimeAPIManager.getGameplayTicks());
 		if (!MobConfigManager.isEnabled()) {
 			clearConfiguredHealthReductions();
+			EntityBehaviorsManager.EndermanBehavior.resetRuntimeState();
 			return;
 		}
 		tickConfiguredHealthReductions(now);
+		EntityBehaviorsManager.EndermanBehavior.tickRuntime(server);
 		if (nextRuntimeTick != Long.MIN_VALUE && now < nextRuntimeTick) return;
 		nextRuntimeTick = now + Math.max(1L, resolveRuntimeProcessingInterval(server));
 		EntityBehaviorsManager.BeeBehavior.tickRuntime(server, new ArrayList<>(TRACKED_BEES.values()), true,
@@ -197,6 +200,7 @@ public final class MobEntityManager {
 		EntityBehaviorsManager.StrayBehavior.resetRuntimeState();
 		EntityBehaviorsManager.BoggedBehavior.resetRuntimeState();
 		EntityBehaviorsManager.ParchedBehavior.resetRuntimeState();
+		EntityBehaviorsManager.EndermanBehavior.resetRuntimeState();
 	}
 
 	public static boolean isEnabled() {
@@ -672,6 +676,8 @@ public final class MobEntityManager {
 			return;
 		}
 		applyConfiguredDebuffEffect(victim, attacker);
+		EntityBehaviorsManager.EndermanBehavior.applyHitTeleport(victim, attacker);
+		EntityBehaviorsManager.EndermanBehavior.applyBroadcastAnger(victim, attacker);
 		EntityRelationshipManager.handleDamage(victim, attacker);
 	}
 
@@ -1442,6 +1448,7 @@ public final class MobEntityManager {
 		EntityBehaviorsManager.BoggedBehavior.onEntityCleanup(entity);
 		EntityBehaviorsManager.ParchedBehavior.onEntityCleanup(entity);
 		EntityBehaviorsManager.BeeBehavior.onEntityCleanup(entity);
+		EntityBehaviorsManager.EndermanBehavior.onEntityCleanup(entity);
 		CONFIGURED_MOB_BABY_STATES.remove(entity.getUUID());
 	}
 

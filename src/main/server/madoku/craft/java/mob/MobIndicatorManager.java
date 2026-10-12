@@ -25,6 +25,7 @@ final class MobIndicatorManager {
 	private static final long MAX_SCAN_INTERVAL_TICKS = 4L;
 	private static long nextScanTick = Long.MIN_VALUE;
 	private static boolean initialized;
+	private static Boolean lastBroadcastSetting;
 
 	private MobIndicatorManager() {
 	}
@@ -47,7 +48,13 @@ final class MobIndicatorManager {
 				broadcast(world.getServer(), entity.getUUID(), 0.0F);
 			}
 		});
-		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> sendActiveStates(handler.player));
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			boolean enabled = MobConfigManager.isMobIndicatorEnabled();
+			MobIndicatorNetworking.sendSettings(handler.player, enabled);
+			if (enabled) {
+				sendActiveStates(handler.player);
+			}
+		});
 	}
 
 	static void onServerStarted(MinecraftServer server) {
@@ -55,11 +62,19 @@ final class MobIndicatorManager {
 		LAST_VULNERABILITY.clear();
 		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
 		nextScanTick = Long.MIN_VALUE;
+		lastBroadcastSetting = null;
 	}
 
 	static void onServerTick(MinecraftServer server) {
 		if (server == null) return;
-		if (!MobConfigManager.isEnabled()) {
+		boolean enabled = MobConfigManager.isMobIndicatorEnabled();
+		if (lastBroadcastSetting == null || lastBroadcastSetting.booleanValue() != enabled) {
+			lastBroadcastSetting = enabled;
+			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+				MobIndicatorNetworking.sendSettings(player, enabled);
+			}
+		}
+		if (!enabled) {
 			for (UUID entityUuid : LAST_VULNERABILITY.keySet()) clear(server, entityUuid);
 			nextScanTick = Long.MIN_VALUE;
 			return;
@@ -107,6 +122,7 @@ final class MobIndicatorManager {
 		LAST_VULNERABILITY.clear();
 		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
 		nextScanTick = Long.MIN_VALUE;
+		lastBroadcastSetting = null;
 	}
 
 	private static boolean isManagedMob(Entity entity) {
@@ -128,7 +144,7 @@ final class MobIndicatorManager {
 	}
 
 	private static void sendActiveStates(ServerPlayer player) {
-		if (player == null) return;
+		if (player == null || !MobConfigManager.isMobIndicatorEnabled()) return;
 		for (Map.Entry<UUID, Float> entry : LAST_VULNERABILITY.entrySet()) {
 			MobIndicatorNetworking.send(player, new MobIndicatorPayloadManager(entry.getKey(), entry.getValue()));
 		}

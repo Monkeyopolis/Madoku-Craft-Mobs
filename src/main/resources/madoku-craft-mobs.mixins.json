@@ -20,6 +20,7 @@
     "mob.DrownedRuntimeTickMixin",
     "mob.DrownedTargetingUnderwaterMixin",
     "mob.DrownedTravelInWaterSpeedMixin",
+    "mob.EndermanRandomTeleportMixin",
     "mob.HuskHungerEffectMixin",
     "mob.LivingEntityMobAggroMixin",
     "mob.MobDifficultySpawnMixin",
@@ -49,6 +50,7 @@
   ],
   "client": [
     "mob.CreeperRendererMixin",
+    "mob.EndermanRendererMixin",
     "mob.LivingEntityRenderStateMixin",
     "mob.LivingEntityRendererMixin",
     "mob.SkeletonRendererMixin",

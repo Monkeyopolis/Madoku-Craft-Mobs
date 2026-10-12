@@ -14,10 +14,12 @@ import madoku.craft.mixin.mob.AbstractSkeletonArrowInvoker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.EntityReference;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
@@ -31,8 +33,10 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.CrossbowAttackMob;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
@@ -56,6 +60,7 @@ import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 public final class EntityBehaviorsManager {
@@ -3819,6 +3824,254 @@ public final class EntityBehaviorsManager {
 			} catch (RuntimeException ignored) {
 				return fallback;
 			}
+		}
+	}
+
+	public static final class EndermanBehavior {
+		private static final String CORRUPTED_ENDERMAN_VARIANT = "corrupted-enderman";
+		private static final String RANDOM_TELEPORT = "random-teleport";
+		private static final String TELEPORT_TARGET = "teleport-target";
+		private static final String BROADCAST_ANGER = MobConfigManager.FIELD_BROADCAST_ANGER;
+		private static final int DEFAULT_BROADCAST_ANGER_DURATION_SECONDS = 30;
+		private static final double DEFAULT_BROADCAST_ANGER_RADIUS = 24.0D;
+		private static final long DEFAULT_TARGET_TELEPORT_COOLDOWN_TICKS = 20L;
+		private static final double DEFAULT_TARGET_TELEPORT_RADIUS = 4.0D;
+		private static final Map<UUID, Long> TARGET_TELEPORT_COOLDOWNS = new ConcurrentHashMap<>();
+		private static final Map<UUID, BroadcastAngerState> BROADCAST_ANGER_STATES = new ConcurrentHashMap<>();
+
+		private EndermanBehavior() {
+		}
+
+		public static void applyHitTeleport(LivingEntity target, LivingEntity attacker) {
+			if (!(attacker instanceof Enderman enderman)
+				|| target == null
+				|| target == enderman
+				|| !target.isAlive()
+				|| !(target.level() instanceof ServerLevel level)) {
+				return;
+			}
+
+			long now = level.getGameTime();
+			UUID endermanId = enderman.getUUID();
+			Long cooldownUntil = TARGET_TELEPORT_COOLDOWNS.get(endermanId);
+			if (cooldownUntil != null) {
+				if (cooldownUntil > now) {
+					return;
+				}
+				TARGET_TELEPORT_COOLDOWNS.remove(endermanId, cooldownUntil);
+			}
+
+			if (!isCorruptedEnderman(enderman)) {
+				return;
+			}
+			ConfiguredBehavior configured = resolveConfiguredBehavior(enderman, TELEPORT_TARGET);
+			if (configured == null
+				|| !readBoolean(configured.definition(), MobConfigManager.FIELD_ENABLED, false)) {
+				return;
+			}
+			JsonObject behavior = configured.definition();
+			long cooldownTicks = Math.max(0L, Math.round(
+				readDouble(behavior, MobConfigManager.FIELD_COOLDOWN, DEFAULT_TARGET_TELEPORT_COOLDOWN_TICKS)
+			));
+			double radius = Math.max(0.0D, readDouble(behavior, MobConfigManager.FIELD_RADIUS, DEFAULT_TARGET_TELEPORT_RADIUS));
+
+			if (tryTeleportTarget(target, radius)) {
+				TARGET_TELEPORT_COOLDOWNS.put(endermanId, now + cooldownTicks);
+			}
+		}
+
+		public static boolean isRandomTeleportEnabled(Enderman enderman) {
+			ConfiguredBehavior configured = resolveConfiguredBehavior(enderman, RANDOM_TELEPORT);
+			return configured == null
+				|| readBoolean(configured.definition(), MobConfigManager.FIELD_ENABLED, true);
+		}
+
+		public static void applyBroadcastAnger(LivingEntity victim, LivingEntity attacker) {
+			if (!(victim instanceof Enderman source)
+				|| attacker == null
+				|| !attacker.isAlive()
+				|| MobFeatureAPIManager.isManagedPet(source)
+				|| !(source.level() instanceof ServerLevel level)) {
+				return;
+			}
+
+			if (!isCorruptedEnderman(source)) {
+				return;
+			}
+			ConfiguredBehavior configured = resolveConfiguredBehavior(source, BROADCAST_ANGER);
+			if (configured == null
+				|| !readBoolean(configured.definition(), MobConfigManager.FIELD_ENABLED, false)) {
+				return;
+			}
+			JsonObject behavior = configured.definition();
+			long durationTicks = Math.max(1L, Math.round(
+				readDouble(behavior, MobConfigManager.FIELD_DURATION, DEFAULT_BROADCAST_ANGER_DURATION_SECONDS)
+					* 20.0D
+			));
+			double radius = Math.max(0.0D, readDouble(behavior, MobConfigManager.FIELD_RADIUS, DEFAULT_BROADCAST_ANGER_RADIUS));
+			long expiresAt = level.getGameTime() + durationTicks;
+			double radiusSquared = radius * radius;
+			AABB area = source.getBoundingBox().inflate(radius);
+			for (Enderman enderman : level.getEntitiesOfClass(Enderman.class, area,
+				candidate -> candidate != null
+					&& candidate.isAlive()
+					&& !MobFeatureAPIManager.isManagedPet(candidate)
+					&& candidate.distanceToSqr(source) <= radiusSquared)) {
+				applyBroadcastAnger(enderman, attacker, expiresAt);
+			}
+		}
+
+		public static void tickRuntime(MinecraftServer server) {
+			if (server == null || BROADCAST_ANGER_STATES.isEmpty()) {
+				return;
+			}
+			for (Map.Entry<UUID, BroadcastAngerState> entry : BROADCAST_ANGER_STATES.entrySet()) {
+				BroadcastAngerState state = entry.getValue();
+				Enderman enderman = state.enderman();
+				if (enderman == null || enderman.isRemoved()) {
+					BROADCAST_ANGER_STATES.remove(entry.getKey(), state);
+					continue;
+				}
+				if (enderman.level().getGameTime() < state.expiresAt()) {
+					continue;
+				}
+
+				boolean trackedTarget = false;
+				if (enderman.getTarget() != null
+					&& state.targetUuid().equals(enderman.getTarget().getUUID())) {
+					trackedTarget = true;
+				}
+				if (enderman instanceof NeutralMob neutral) {
+					EntityReference<?> angerTarget = neutral.getPersistentAngerTarget();
+					trackedTarget |= angerTarget != null && state.targetUuid().equals(angerTarget.getUUID());
+					if (trackedTarget) {
+						neutral.stopBeingAngry();
+					}
+				}
+				BROADCAST_ANGER_STATES.remove(entry.getKey(), state);
+			}
+		}
+
+		public static void onEntityCleanup(Entity entity) {
+			if (entity != null) {
+				TARGET_TELEPORT_COOLDOWNS.remove(entity.getUUID());
+				BROADCAST_ANGER_STATES.remove(entity.getUUID());
+			}
+		}
+
+		public static void resetRuntimeState() {
+			TARGET_TELEPORT_COOLDOWNS.clear();
+			BROADCAST_ANGER_STATES.clear();
+		}
+
+		private static void applyBroadcastAnger(Enderman enderman, LivingEntity target, long expiresAt) {
+			if (enderman instanceof NeutralMob neutral) {
+				neutral.setPersistentAngerTarget(EntityReference.of(target));
+				neutral.setPersistentAngerEndTime(expiresAt);
+			}
+			EntityRelationshipManager.forceSetTargetFromConfiguredAnger(enderman, target);
+			BROADCAST_ANGER_STATES.put(
+				enderman.getUUID(),
+				new BroadcastAngerState(enderman, target.getUUID(), expiresAt)
+			);
+		}
+
+		private static boolean tryTeleportTarget(LivingEntity target, double radius) {
+			if (!(target.level() instanceof ServerLevel level)) {
+				return false;
+			}
+			for (int attempt = 0; attempt < 16; attempt++) {
+				double angle = target.getRandom().nextDouble() * Math.PI * 2.0D;
+				double distance = Math.sqrt(target.getRandom().nextDouble()) * radius;
+				double x = target.getX() + Math.cos(angle) * distance;
+				double y = target.getY() + target.getRandom().nextInt(3) - 1.0D;
+				double z = target.getZ() + Math.sin(angle) * distance;
+				if (isSafeTeleportPosition(target, level, x, y, z)
+					&& target.randomTeleport(x, y, z, true, BlockTags.ENDERMAN_DOES_NOT_TELEPORT_TO)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		private static boolean isSafeTeleportPosition(LivingEntity target, ServerLevel level, double x, double y, double z) {
+			AABB targetBox = target.getBoundingBox();
+			AABB destinationBox = targetBox.move(x - target.getX(), y - target.getY(), z - target.getZ());
+			if (!level.noCollision(target, destinationBox)) {
+				return false;
+			}
+
+			BlockPos destination = BlockPos.containing(x, y, z);
+			BlockPos above = destination.above();
+			return !level.getBlockState(destination).is(BlockTags.ENDERMAN_DOES_NOT_TELEPORT_TO)
+				&& !level.getBlockState(above).is(BlockTags.ENDERMAN_DOES_NOT_TELEPORT_TO)
+				&& level.getBlockState(destination).getCollisionShape(level, destination).isEmpty()
+				&& level.getBlockState(above).getCollisionShape(level, above).isEmpty();
+		}
+
+		private static ConfiguredBehavior resolveConfiguredBehavior(Enderman enderman, String key) {
+			if (enderman == null || !MobEntityManager.isEnabled()) {
+				return null;
+			}
+			String fileKey = MobEntityManager.resolveRuntimeMobFileKey(enderman);
+			if (!MobConfigManager.FILE_ENDERMAN.equals(fileKey)
+				|| !MobEntityManager.isMobFileEnabledForRuntime(fileKey)) {
+				return null;
+			}
+			JsonObject fileRoot = MobEntityManager.resolveMobFileConfigRootForRuntime(fileKey);
+			if (!readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_BEHAVIORS, true)) {
+				return null;
+			}
+			JsonObject behaviorRoot = MobEntityManager.readMobBehaviorRootForRuntime(
+				MobEntityManager.resolveConfiguredEntityVariantForRuntime(enderman));
+			return new ConfiguredBehavior(readObject(behaviorRoot, key));
+		}
+
+		private static boolean isCorruptedEnderman(Enderman enderman) {
+			if (!MobConfigManager.FILE_ENDERMAN.equals(MobEntityManager.resolveRuntimeMobFileKey(enderman))) {
+				return false;
+			}
+			if (enderman instanceof MobVariantAccess access) {
+				String variantKey = access.madokuCraft$getVariantKey();
+				if (variantKey != null && !variantKey.isBlank()) {
+					return CORRUPTED_ENDERMAN_VARIANT.equalsIgnoreCase(variantKey);
+				}
+			}
+			return CORRUPTED_ENDERMAN_VARIANT.equals(
+				MobEntityManager.resolveConfiguredVariantKeyForRuntime(enderman)
+			);
+		}
+
+		private static JsonObject readObject(JsonObject root, String key) {
+			if (root == null || key == null || key.isBlank()) {
+				return new JsonObject();
+			}
+			JsonElement element = root.get(key);
+			return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+		}
+
+		private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean()
+				? element.getAsBoolean() : fallback;
+		}
+
+		private static double readDouble(JsonObject root, String key, double fallback) {
+			JsonElement element = root == null ? null : root.get(key);
+			if (element == null || !element.isJsonPrimitive()) {
+				return fallback;
+			}
+			try {
+				return element.getAsDouble();
+			} catch (RuntimeException ignored) {
+				return fallback;
+			}
+		}
+
+		private record BroadcastAngerState(Enderman enderman, UUID targetUuid, long expiresAt) {
+		}
+
+		private record ConfiguredBehavior(JsonObject definition) {
 		}
 	}
 

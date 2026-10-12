@@ -14,6 +14,7 @@ final class MadokuMobNetworking {
 		if (initialized) return;
 		PayloadTypeRegistry.clientboundPlay().register(MobPayloadManager.TYPE, MobPayloadManager.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(MobIndicatorPayloadManager.TYPE, MobIndicatorPayloadManager.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(MobIndicatorSettingsPayloadManager.TYPE, MobIndicatorSettingsPayloadManager.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(MobVariantPayloadManager.TYPE, MobVariantPayloadManager.CODEC);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
 			MobVariantNetworking.sendActiveStates(handler.player, server));

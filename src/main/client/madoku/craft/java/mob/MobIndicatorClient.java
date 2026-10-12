@@ -47,6 +47,7 @@ public final class MobIndicatorClient {
 	private static final char VULNERABILITY_ICON_CHARACTER = '\uE002';
 	private static final char INDICATOR_SPACING_CHARACTER = '\uE003';
 	private static boolean initialized;
+	private static volatile boolean enabled = true;
 
 	private MobIndicatorClient() {
 	}
@@ -66,8 +67,11 @@ public final class MobIndicatorClient {
 				VULNERABILITY_BY_ENTITY.put(payload.entityUuid(), payload.vulnerabilityPercent());
 			}
 		});
+		ClientPlayNetworking.registerGlobalReceiver(MobIndicatorSettingsPayloadManager.TYPE,
+			(payload, context) -> enabled = payload.enabled());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
 			VULNERABILITY_BY_ENTITY.clear();
+			enabled = true;
 		});
 	}
 
@@ -84,7 +88,7 @@ public final class MobIndicatorClient {
 		SubmitNodeCollector collector,
 		CameraRenderState cameraState
 	) {
-		if (state == null || renderState == null || poseStack == null || collector == null || cameraState == null) {
+		if (!enabled || state == null || renderState == null || poseStack == null || collector == null || cameraState == null) {
 			return;
 		}
 
