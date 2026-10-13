@@ -16,6 +16,13 @@
     },
     {
       "type": "bitmap",
+      "file": "madoku-craft:icons/damage.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": ["\uE004"]
+    },
+    {
+      "type": "bitmap",
       "file": "madoku-craft:icons/vulnerability.png",
       "ascent": 7,
       "height": 8,

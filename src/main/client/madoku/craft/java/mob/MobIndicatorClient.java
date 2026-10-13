@@ -33,17 +33,22 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class MobIndicatorClient {
 	private static final Identifier MADOKU_PET_ENTITY_ID =
 		Identifier.fromNamespaceAndPath("madoku-craft", "pet");
+	private static final Map<UUID, Float> DAMAGE_BY_ENTITY = new ConcurrentHashMap<>();
 	private static final Map<UUID, Float> VULNERABILITY_BY_ENTITY = new ConcurrentHashMap<>();
 	private static final double MAX_INDICATOR_DISTANCE = 24.0D;
+	private static final float INDICATOR_SCALE = 0.8F;
+	private static final double ROW_SPACING = 0.22D;
 	private static final Identifier INDICATOR_FONT_ID = Identifier.fromNamespaceAndPath("madoku-craft", "mob_indicator");
 	private static final FontDescription INDICATOR_FONT = new FontDescription.Resource(INDICATOR_FONT_ID);
 	private static final Identifier INDICATOR_SPACING_FONT_ID = Identifier.fromNamespaceAndPath("madoku-craft", "mob_indicator_spacing");
 	private static final FontDescription INDICATOR_SPACING_FONT = new FontDescription.Resource(INDICATOR_SPACING_FONT_ID);
 	private static final Identifier HEALTH_ICON = Identifier.fromNamespaceAndPath("madoku-craft", "icons/health.png");
 	private static final Identifier ARMOR_ICON = Identifier.fromNamespaceAndPath("madoku-craft", "icons/armor.png");
+	private static final Identifier DAMAGE_ICON = Identifier.fromNamespaceAndPath("madoku-craft", "icons/damage.png");
 	private static final Identifier VULNERABILITY_ICON = Identifier.fromNamespaceAndPath("madoku-craft", "icons/vulnerability.png");
 	private static final char HEALTH_ICON_CHARACTER = '\uE000';
 	private static final char ARMOR_ICON_CHARACTER = '\uE001';
+	private static final char DAMAGE_ICON_CHARACTER = '\uE004';
 	private static final char VULNERABILITY_ICON_CHARACTER = '\uE002';
 	private static final char INDICATOR_SPACING_CHARACTER = '\uE003';
 	private static boolean initialized;
@@ -61,6 +66,11 @@ public final class MobIndicatorClient {
 			if (payload.entityUuid() == null) {
 				return;
 			}
+			if (payload.damage() <= 0.0F) {
+				DAMAGE_BY_ENTITY.remove(payload.entityUuid());
+			} else {
+				DAMAGE_BY_ENTITY.put(payload.entityUuid(), payload.damage());
+			}
 			if (payload.vulnerabilityPercent() <= 0.0F) {
 				VULNERABILITY_BY_ENTITY.remove(payload.entityUuid());
 			} else {
@@ -70,6 +80,7 @@ public final class MobIndicatorClient {
 		ClientPlayNetworking.registerGlobalReceiver(MobIndicatorSettingsPayloadManager.TYPE,
 			(payload, context) -> enabled = payload.enabled());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+			DAMAGE_BY_ENTITY.clear();
 			VULNERABILITY_BY_ENTITY.clear();
 			enabled = true;
 		});
@@ -108,26 +119,36 @@ public final class MobIndicatorClient {
 		}
 
 		float armor = Math.max(0.0F, state.madokuCraftMobIndicator$getArmor());
+		float damage = Math.max(0.0F,
+			DAMAGE_BY_ENTITY.getOrDefault(state.madokuCraftMobIndicator$getEntityUuid(), 0.0F));
 		float vulnerability = Math.max(0.0F,
 			VULNERABILITY_BY_ENTITY.getOrDefault(state.madokuCraftMobIndicator$getEntityUuid(), 0.0F));
 		int indicatorLight = LightCoordsUtil.lightCoordsWithEmission(renderState.lightCoords, 2);
 		List<Row> rows = new ArrayList<>();
 		rows.add(new Row(HEALTH_ICON_CHARACTER, HEALTH_ICON, formatHealth(health), 0xFFFF5555));
+		if (damage > 0.01F) rows.add(new Row(DAMAGE_ICON_CHARACTER, DAMAGE_ICON, formatNumber(damage), 0xFFFFAA55));
 		if (armor > 0.01F) rows.add(new Row(ARMOR_ICON_CHARACTER, ARMOR_ICON, formatNumber(armor), 0xFFAAAAAA));
 		if (vulnerability > 0.01F) rows.add(new Row(VULNERABILITY_ICON_CHARACTER, VULNERABILITY_ICON, formatPercent(vulnerability), 0xFFFFAA00));
 
 		for (int index = 0; index < rows.size(); index++) {
 			Row row = rows.get(index);
 			int displayIndex = rows.size() - 1 - index;
+			poseStack.pushPose();
+			poseStack.scale(INDICATOR_SCALE, INDICATOR_SCALE, INDICATOR_SCALE);
 			collector.submitNameTag(
 				poseStack,
-				new Vec3(0.0D, renderState.boundingBoxHeight + (displayIndex * 0.25D), 0.0D),
+				new Vec3(
+					0.0D,
+					(renderState.boundingBoxHeight + (displayIndex * ROW_SPACING)) / INDICATOR_SCALE,
+					0.0D
+				),
 				0,
 				row.component(),
 				true,
 				indicatorLight,
 				cameraState
 			);
+			poseStack.popPose();
 		}
 	}
 

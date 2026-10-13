@@ -22,6 +22,9 @@ public interface CreeperAccessor {
 	void madokuCraft$setMaxSwell(int value);
 
 	@Accessor("explosionRadius")
+	int madokuCraft$getExplosionRadius();
+
+	@Accessor("explosionRadius")
 	void madokuCraft$setExplosionRadius(int value);
 }
 

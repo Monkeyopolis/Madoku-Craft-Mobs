@@ -20,6 +20,7 @@ import net.minecraft.world.entity.player.Player;
 
 /** Shared runtime policy for configured AI goals. */
 public final class EntityGoalsManager {
+	private static final JsonObject DISABLED_GOAL = createDisabledGoal();
 	private static final Map<GoalCooldownKey, Long> GOAL_COOLDOWNS = new ConcurrentHashMap<>();
 	private static final Map<Goal, WeakReference<Mob>> GOAL_OWNER_CACHE =
 		Collections.synchronizedMap(new WeakHashMap<>());
@@ -41,7 +42,19 @@ public final class EntityGoalsManager {
 		if (!readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_GOALS, true)) {
 			return null;
 		}
-		return readGoal(MobEntityManager.resolveConfiguredEntityVariantForRuntime(entity), goalKey);
+		JsonObject variant = MobEntityManager.resolveConfiguredEntityVariantForRuntime(entity);
+		JsonObject goal = readGoal(variant, goalKey);
+		if (goal != null) {
+			return goal;
+		}
+		// Goal overrides are variant profiles. An omitted ranged goal means the
+		// variant is melee-only, while an omitted melee goal means the variant is
+		// ranged-only when a ranged goal is explicitly enabled.
+		if (isRangedGoalKey(goalKey)
+			|| ("melee-attack".equals(goalKey) && hasEnabledRangedGoal(variant))) {
+			return DISABLED_GOAL;
+		}
+		return null;
 	}
 
 	static boolean isGoalEnabledForRuntime(LivingEntity entity, String goalKey) {
@@ -231,6 +244,26 @@ public final class EntityGoalsManager {
 		if (goalsElement == null || !goalsElement.isJsonObject()) return null;
 		JsonElement goalElement = goalsElement.getAsJsonObject().get(goalKey);
 		return goalElement != null && goalElement.isJsonObject() ? goalElement.getAsJsonObject() : null;
+	}
+
+	private static boolean isRangedGoalKey(String goalKey) {
+		return MobConfigManager.FIELD_RANGED_ATTACK.equals(goalKey)
+			|| MobConfigManager.FIELD_TRIDENT_ATTACK.equals(goalKey);
+	}
+
+	private static boolean hasEnabledRangedGoal(JsonObject variant) {
+		return isConfiguredGoalEnabled(variant, MobConfigManager.FIELD_RANGED_ATTACK)
+			|| isConfiguredGoalEnabled(variant, MobConfigManager.FIELD_TRIDENT_ATTACK);
+	}
+
+	private static boolean isConfiguredGoalEnabled(JsonObject variant, String goalKey) {
+		return readBoolean(readGoal(variant, goalKey), MobConfigManager.FIELD_ENABLED, false);
+	}
+
+	private static JsonObject createDisabledGoal() {
+		JsonObject goal = new JsonObject();
+		goal.addProperty(MobConfigManager.FIELD_ENABLED, false);
+		return goal;
 	}
 
 	private static String camelCaseToKey(String value) {

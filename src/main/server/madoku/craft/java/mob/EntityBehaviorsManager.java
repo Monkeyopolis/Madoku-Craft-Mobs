@@ -1059,7 +1059,7 @@ public final class EntityBehaviorsManager {
 			if (skeleton == null || resolvedRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}
@@ -1535,7 +1535,6 @@ public final class EntityBehaviorsManager {
 
 	public static final class DrownedBehavior {
 		private static final double MIN_DROWNED_TRIDENT_HOMING_DISTANCE_SQR = 4.0D;
-		private static final String DROWNED_VARIANT_RANGED_KEY = "ranged-drowned";
 		private static final String RANGED_TRIDENT_TAG = "madoku-craft.drowned.ranged_trident";
 
 		private static String normalizeKey(String value) {
@@ -1813,7 +1812,7 @@ public final class EntityBehaviorsManager {
 			if (drowned == null || resolvedRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}
@@ -1903,7 +1902,30 @@ public final class EntityBehaviorsManager {
 		}
 
 		public static boolean isRangedDrownedVariant(Drowned drowned) {
-			return drowned != null && DROWNED_VARIANT_RANGED_KEY.equals(readStoredDrownedVariantKey(drowned));
+			if (drowned == null) {
+				return false;
+			}
+			JsonObject activeRoot = resolveActiveDrownedRoot(drowned);
+			if (activeRoot.entrySet().isEmpty()) {
+				return false;
+			}
+			JsonObject behaviorRoot = MobEntityManager.readMobBehaviorRootForRuntime(activeRoot);
+			JsonObject tridentGoal = readObject(
+				readObject(activeRoot, MobConfigManager.FIELD_MOB_GOALS),
+				MobConfigManager.FIELD_TRIDENT_ATTACK
+			);
+			return readBoolean(behaviorRoot, MobConfigManager.FIELD_TRIDENT_ATTACK, false)
+				&& readBoolean(tridentGoal, MobConfigManager.FIELD_ENABLED, false);
+		}
+
+		public static double resolveRangedDamageForIndicator(Drowned drowned) {
+			if (!isRangedDrownedVariant(drowned)) {
+				return 0.0D;
+			}
+			JsonObject activeRoot = resolveActiveDrownedRoot(drowned);
+			JsonObject componentsRoot = readObject(activeRoot, MobConfigManager.FIELD_MOB_COMPONENTS);
+			double baseDamage = readDouble(componentsRoot, MobConfigManager.FIELD_RANGED_DAMAGE, drowned.isBaby() ? 3.0D : 6.0D);
+			return Math.max(0.0D, resolveTridentRangedDamage(drowned, baseDamage));
 		}
 
 		public static int resolveTridentGroundClearTicks(net.minecraft.world.entity.projectile.arrow.ThrownTrident trident) {
@@ -2310,6 +2332,24 @@ public final class EntityBehaviorsManager {
 				);
 		}
 
+		public static boolean isCrossbowAttackEnabledForIndicator(Piglin piglin) {
+			return isCrossbowAttackEnabled(piglin);
+		}
+
+		public static double resolveRangedDamageForIndicator(Piglin piglin) {
+			if (!isCrossbowAttackEnabled(piglin)) {
+				return 0.0D;
+			}
+			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			double baseDamage = readDouble(components, MobConfigManager.FIELD_RANGED_DAMAGE, DEFAULT_RANGED_DAMAGE);
+			double regionalDamage = MobRegionalDifficultyManager.resolveMobRangedDamageScaling(piglin, baseDamage);
+			return Math.max(0.0D, MobEntityManager.resolveWorldDifficultyValueForRuntime(
+				piglin,
+				MobConfigManager.FIELD_RANGED_DAMAGE,
+				Math.max(0.0D, regionalDamage)
+			));
+		}
+
 		private static JsonObject resolveFileRoot(Piglin piglin) {
 			if (piglin == null || !MobEntityManager.isEnabled()
 				|| !MobConfigManager.FILE_PIGLIN.equals(MobEntityManager.resolveRuntimeMobFileKey(piglin))
@@ -2559,7 +2599,7 @@ public final class EntityBehaviorsManager {
 			if (husk == null || resolvedRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}
@@ -2905,7 +2945,7 @@ public final class EntityBehaviorsManager {
 			if (skeleton == null || resolvedRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}
@@ -4419,7 +4459,7 @@ public final class EntityBehaviorsManager {
 			if (skeleton == null || resolvedRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}
@@ -5199,7 +5239,7 @@ public final class EntityBehaviorsManager {
 			if (zombie == null || resolvedZombieRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedZombieRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedZombieRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}
@@ -5411,7 +5451,7 @@ public final class EntityBehaviorsManager {
 			if (zombieVillager == null || resolvedRoot == null) {
 				return;
 			}
-			boolean weaponDamageEnabled = readBoolean(resolvedRoot, MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+			boolean weaponDamageEnabled = MobEntityManager.isWeaponDamageEnabledForRuntime(resolvedRoot);
 			if (weaponDamageEnabled) {
 				return;
 			}

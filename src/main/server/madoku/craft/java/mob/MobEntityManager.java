@@ -221,7 +221,14 @@ public final class MobEntityManager {
 		DifficultyInstance difficulty,
 		EntitySpawnReason spawnReason
 	) {
-		if (mob == null || !APPLIED_SPAWN_OVERRIDES.add(mob.getUUID())) {
+		if (mob == null) {
+			return;
+		}
+		if (!APPLIED_SPAWN_OVERRIDES.add(mob.getUUID())) {
+			// Mob subclasses can perform additional vanilla equipment setup after
+			// Mob.finalizeSpawn. Reapply the resolved configured weapon at the
+			// subclass tail so vanilla equipment cannot replace it.
+			applyConfiguredWeaponAfterVanilla(mob);
 			return;
 		}
 		if (spawnReason != EntitySpawnReason.JOCKEY) {
@@ -291,7 +298,81 @@ public final class MobEntityManager {
 		if (mob == null || !shouldApplyConfiguredComponentsForRuntime(mob)) {
 			return;
 		}
-		applyConfiguredMobWeapon(mob, resolveConfiguredEntityVariantForRuntime(mob));
+		JsonObject root = resolveConfiguredEntityVariantForRuntime(mob);
+		applyConfiguredMobWeapon(mob, root);
+		// Vanilla skeleton spawning can place a bow before the configured variant is
+		// applied. A melee variant must not retain that ranged weapon.
+		if (mob instanceof AbstractSkeleton skeleton) {
+			clearConfiguredSkeletonBow(skeleton);
+		}
+		applyWeaponDamagePolicyForRuntime(mob, root);
+	}
+
+	private static void applyConfiguredWeaponAfterVanilla(Mob mob) {
+		if (mob == null) {
+			return;
+		}
+		applyConfiguredMobWeaponAfterEquipment(mob);
+		applyConfiguredJockeyWeaponForSource(mob, resolveConfiguredEntityVariantForRuntime(mob));
+	}
+
+	private static void removeBowFromNonRangedSkeleton(AbstractSkeleton skeleton) {
+		if (skeleton == null) {
+			return;
+		}
+		if (skeleton.getMainHandItem().is(Items.BOW)) {
+			skeleton.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		}
+		if (skeleton.getOffhandItem().is(Items.BOW)) {
+			skeleton.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+		}
+	}
+
+	/**
+	 * Returns whether the selected configured skeleton variant is melee-only.
+	 * The ranged decision must come from the resolved variant, not from the
+	 * vanilla entity type, because all skeleton variants share that type.
+	 */
+	private static boolean shouldClearConfiguredSkeletonBow(AbstractSkeleton skeleton) {
+		if (skeleton == null || !MobConfigManager.isEnabled()) {
+			return false;
+		}
+		String fileKey = resolveRuntimeMobFileKey(skeleton);
+		if (fileKey.isBlank() || !isMobFileEnabledForRuntime(fileKey)) {
+			return false;
+		}
+		JsonObject fileConfigRoot = resolveMobFileConfigRootForRuntime(fileKey);
+		if (!readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_COMPONENTS, true)
+			&& !readBoolean(fileConfigRoot, MobConfigManager.FIELD_OVERRIDE_GOALS, true)) {
+			return false;
+		}
+
+		JsonObject activeRoot = resolveConfiguredEntityVariantForRuntime(skeleton);
+		if (activeRoot.entrySet().isEmpty()) {
+			return false;
+		}
+		JsonObject behaviorRoot = readMobBehaviorRoot(activeRoot);
+		JsonObject rangedGoal = readObject(
+			readMobGoalsRoot(activeRoot),
+			MobConfigManager.FIELD_RANGED_ATTACK
+		);
+		boolean bowAttackEnabled = readBoolean(
+			behaviorRoot,
+			MobConfigManager.FIELD_BOW_ATTACK,
+			false
+		);
+		boolean rangedGoalEnabled = readBoolean(
+			rangedGoal,
+			MobConfigManager.FIELD_ENABLED,
+			false
+		);
+		return !bowAttackEnabled || !rangedGoalEnabled;
+	}
+
+	private static void clearConfiguredSkeletonBow(AbstractSkeleton skeleton) {
+		if (shouldClearConfiguredSkeletonBow(skeleton)) {
+			removeBowFromNonRangedSkeleton(skeleton);
+		}
 	}
 
 	private static void applyConfiguredJockeyAtVanillaSpawn(
@@ -449,7 +530,7 @@ public final class MobEntityManager {
 		if (sourcePassengerIndex < 0) {
 			return false;
 		}
-		applyConfiguredJockeyMobWeapon(sourceMob, passengerDefinitions.get(sourcePassengerIndex));
+		applyConfiguredJockeyWeaponForSource(sourceMob, variantRoot);
 		Entity mount = spawnConfiguredJockeyPartner(sourceMob, world, difficulty, level, jockeyReason, mountType, mountRoot);
 		if (mount == null || (!sourceMob.startRiding(mount) && sourceMob.isAlive())) {
 			if (mount != null && mount.isAlive()) {
@@ -592,6 +673,25 @@ public final class MobEntityManager {
 			}
 		}
 		return passengers;
+	}
+
+	private static void applyConfiguredJockeyWeaponForSource(Mob sourceMob, JsonObject variantRoot) {
+		if (sourceMob == null || variantRoot == null || variantRoot.entrySet().isEmpty()) {
+			return;
+		}
+		JsonObject spawnRules = readObject(variantRoot, MobConfigManager.FIELD_SPAWN_RULES);
+		JsonObject jockeyRoot = readObject(spawnRules, MobConfigManager.FIELD_MOB_JOCKEY);
+		if (jockeyRoot.entrySet().isEmpty() || !readBoolean(jockeyRoot, MobConfigManager.FIELD_ENABLED, false)) {
+			return;
+		}
+		for (JsonObject passengerDefinition : readConfiguredJockeyPassengers(
+			readObject(jockeyRoot, MobConfigManager.FIELD_JOCKEY_PASSENGERS)
+		)) {
+			if (resolveConfiguredJockeyMobEntityType(passengerDefinition) == sourceMob.getType()) {
+				applyConfiguredJockeyMobWeapon(sourceMob, passengerDefinition);
+				return;
+			}
+		}
 	}
 
 	private static EntityType<?> resolveConfiguredJockeyMobEntityType(JsonObject mobDefinition) {
@@ -763,6 +863,48 @@ public final class MobEntityManager {
 			}
 		}
 		return fallbackDamage;
+	}
+
+	/** Resolves the attack value displayed by the mob indicator. */
+	public static float resolveMobIndicatorDamage(Mob mob) {
+		if (mob == null) {
+			return 0.0F;
+		}
+
+		if (mob instanceof Creeper creeper) {
+			float explosionPower = Math.max(
+				0.0F,
+				((CreeperAccessor) creeper).madokuCraft$getExplosionRadius()
+			);
+			return Math.max(0.0F, resolveFixedPlayerExplosionDamage(creeper, explosionPower));
+		}
+
+		double rangedDamage = resolveMobIndicatorRangedDamage(mob);
+		if (Double.isFinite(rangedDamage) && rangedDamage >= 0.0D) {
+			return (float) Math.max(0.0D, rangedDamage);
+		}
+
+		AttributeInstance attackDamage = mob.getAttribute(Attributes.ATTACK_DAMAGE);
+		if (attackDamage == null || !Double.isFinite(attackDamage.getValue())) {
+			return 0.0F;
+		}
+		return (float) Math.max(0.0D, attackDamage.getValue());
+	}
+
+	private static double resolveMobIndicatorRangedDamage(Mob mob) {
+		if (mob instanceof AbstractSkeleton skeleton && isBowAttackEnabledForRuntimeSkeleton(skeleton)) {
+			JsonObject root = resolveSkeletonVariantRuntimeRoot(skeleton);
+			if (!root.entrySet().isEmpty()) {
+				return resolveSkeletonRangedDamage(skeleton, root);
+			}
+		}
+		if (mob instanceof Drowned drowned && EntityBehaviorsManager.DrownedBehavior.isRangedDrownedVariant(drowned)) {
+			return EntityBehaviorsManager.DrownedBehavior.resolveRangedDamageForIndicator(drowned);
+		}
+		if (mob instanceof Piglin piglin && EntityBehaviorsManager.PiglinBehavior.isCrossbowAttackEnabledForIndicator(piglin)) {
+			return EntityBehaviorsManager.PiglinBehavior.resolveRangedDamageForIndicator(piglin);
+		}
+		return -1.0D;
 	}
 
 	public static void applyCreeperExplosionOverride(
@@ -1206,6 +1348,7 @@ public final class MobEntityManager {
 			modified = true;
 		}
 		modified |= applyConfiguredMobWeapon(entity, root);
+		applyWeaponDamagePolicyForRuntime(entity, root);
 		rescaleCurrentHealth(entity, oldMaxHealth);
 		return modified;
 	}
@@ -1887,7 +2030,13 @@ public final class MobEntityManager {
 		if (variantGroupRoot == null || variantGroupRoot.entrySet().isEmpty()) {
 			return defaultGroupRoot == null ? new JsonObject() : defaultGroupRoot.deepCopy();
 		}
-		// Top-level variants are siblings. They must resolve independently.
+		if (hasEnabledJockeySpawnRule(variantGroupRoot)) {
+			// A jockey variant changes the spawn relationship, not the mob's
+			// combat profile. Preserve the normal profile and let explicit jockey
+			// fields override it.
+			return mergeJsonWithOverride(defaultGroupRoot, variantGroupRoot);
+		}
+		// Non-jockey top-level variants are siblings. They resolve independently.
 		return variantGroupRoot.deepCopy();
 	}
 
@@ -2062,7 +2211,31 @@ public final class MobEntityManager {
 			}
 		}
 		JsonObject resolved = resolveNestedVariantForRuntime(variantGroup, entity, null, false);
-		return reconcileBabyVariantForRuntime(variantGroup, resolved, entity);
+		resolved = reconcileBabyVariantForRuntime(variantGroup, resolved, entity);
+		return mergeConfiguredJockeyBaseVariantForRuntime(fileRoot, resolved, entity);
+	}
+
+	private static JsonObject mergeConfiguredJockeyBaseVariantForRuntime(
+		JsonObject fileRoot,
+		JsonObject jockeyVariant,
+		LivingEntity entity
+	) {
+		if (fileRoot == null || jockeyVariant == null || jockeyVariant.entrySet().isEmpty()) {
+			return jockeyVariant;
+		}
+		JsonObject spawnRules = readSpawnRulesRoot(jockeyVariant);
+		JsonObject jockey = readObject(spawnRules, MobConfigManager.FIELD_MOB_JOCKEY);
+		if (!readBoolean(jockey, MobConfigManager.FIELD_ENABLED, false)) {
+			return jockeyVariant;
+		}
+
+		JsonObject baseVariant = EntityConfigManager.resolvePrimaryVariantOnly(fileRoot);
+		if (baseVariant.entrySet().isEmpty()) {
+			return jockeyVariant;
+		}
+		JsonObject resolvedBase = resolveNestedVariantForRuntime(baseVariant, entity, null, false);
+		resolvedBase = reconcileBabyVariantForRuntime(baseVariant, resolvedBase, entity);
+		return mergeJsonWithOverride(resolvedBase, jockeyVariant);
 	}
 
 	static String readStoredVariantKeyForRuntime(LivingEntity entity, String fileKey) {
@@ -2540,6 +2713,25 @@ public final class MobEntityManager {
 		return readMobBehaviorBoolean(root, key, fallback);
 	}
 
+	static boolean isWeaponDamageEnabledForRuntime(JsonObject root) {
+		if (root == null) {
+			return true;
+		}
+		JsonElement rootValue = root.get(MobConfigManager.FIELD_WEAPON_DAMAGE);
+		if (rootValue != null && rootValue.isJsonPrimitive() && rootValue.getAsJsonPrimitive().isBoolean()) {
+			return rootValue.getAsBoolean();
+		}
+		return readBoolean(readMobComponentsRoot(root), MobConfigManager.FIELD_WEAPON_DAMAGE, true);
+	}
+
+	private static void applyWeaponDamagePolicyForRuntime(LivingEntity entity, JsonObject root) {
+		if (!(entity instanceof Mob mob) || root == null || isWeaponDamageEnabledForRuntime(root)) {
+			return;
+		}
+		stripHeldAttackDamageModifiers(mob, EquipmentSlot.MAINHAND);
+		stripHeldAttackDamageModifiers(mob, EquipmentSlot.OFFHAND);
+	}
+
 	private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
 		if (root == null) {
 			return fallback;
@@ -2676,12 +2868,18 @@ public final class MobEntityManager {
 			return;
 		}
 		String itemId = readString(weaponElement.getAsJsonObject(), MobConfigManager.FIELD_ITEM, "");
-		if (itemId.isBlank()) {
+		String normalizedItemId = normalizeKey(itemId);
+		if (normalizedItemId.isBlank() || "hand".equals(normalizedItemId)) {
+			return;
+		}
+		if ("empty".equals(normalizedItemId)) {
+			mob.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
 			return;
 		}
 		ItemStack stack = resolveItemStackById(itemId);
 		if (!stack.isEmpty()) {
 			mob.setItemSlot(EquipmentSlot.MAINHAND, stack);
+			applyWeaponDamagePolicyForRuntime(mob, resolveConfiguredEntityVariantForRuntime(mob));
 		}
 	}
 
@@ -2711,10 +2909,6 @@ public final class MobEntityManager {
 			return false;
 		}
 		mob.setItemSlot(EquipmentSlot.MAINHAND, stack);
-		if (!readBoolean(root, MobConfigManager.FIELD_WEAPON_DAMAGE, true)) {
-			stripHeldAttackDamageModifiers(mob, EquipmentSlot.MAINHAND);
-			stripHeldAttackDamageModifiers(mob, EquipmentSlot.OFFHAND);
-		}
 		return true;
 	}
 

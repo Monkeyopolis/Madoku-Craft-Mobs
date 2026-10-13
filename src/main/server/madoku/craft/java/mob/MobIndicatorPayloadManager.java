@@ -8,8 +8,8 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
-/** Synchronizes the active vulnerability indicator state for a managed mob. */
-public record MobIndicatorPayloadManager(UUID entityUuid, float vulnerabilityPercent) implements CustomPacketPayload {
+/** Synchronizes the active damage and vulnerability indicator state for a managed mob. */
+public record MobIndicatorPayloadManager(UUID entityUuid, float damage, float vulnerabilityPercent) implements CustomPacketPayload {
 	public static final Type<MobIndicatorPayloadManager> TYPE =
 		new Type<>(Identifier.fromNamespaceAndPath("madoku-craft", "mob_indicator"));
 	public static final StreamCodec<RegistryFriendlyByteBuf, MobIndicatorPayloadManager> CODEC =
@@ -19,9 +19,11 @@ public record MobIndicatorPayloadManager(UUID entityUuid, float vulnerabilityPer
 			ByteBufCodecs.LONG,
 			payload -> payload.entityUuid().getLeastSignificantBits(),
 			ByteBufCodecs.FLOAT,
+			MobIndicatorPayloadManager::damage,
+			ByteBufCodecs.FLOAT,
 			MobIndicatorPayloadManager::vulnerabilityPercent,
-			(mostSignificantBits, leastSignificantBits, vulnerabilityPercent) ->
-				new MobIndicatorPayloadManager(new UUID(mostSignificantBits, leastSignificantBits), vulnerabilityPercent)
+			(mostSignificantBits, leastSignificantBits, damage, vulnerabilityPercent) ->
+				new MobIndicatorPayloadManager(new UUID(mostSignificantBits, leastSignificantBits), damage, vulnerabilityPercent)
 		);
 
 	@Override

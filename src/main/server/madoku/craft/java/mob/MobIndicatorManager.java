@@ -1,6 +1,8 @@
 package madoku.craft.java.mob;
 
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,6 +21,7 @@ import net.minecraft.world.entity.Mob;
 /** Tracks server-authoritative state displayed by the mob indicator above managed entities. */
 final class MobIndicatorManager {
 	private static final Map<UUID, LivingEntity> TRACKED_ENTITIES = new ConcurrentHashMap<>();
+	private static final Map<UUID, Float> LAST_DAMAGE = new ConcurrentHashMap<>();
 	private static final Map<UUID, Float> LAST_VULNERABILITY = new ConcurrentHashMap<>();
 	private static final String ADAPTIVE_INTERVAL_ID = "madoku-mob-indicators";
 	private static final long MIN_SCAN_INTERVAL_TICKS = 1L;
@@ -44,8 +47,10 @@ final class MobIndicatorManager {
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
 			if (!isManagedMob(entity)) return;
 			TRACKED_ENTITIES.remove(entity.getUUID());
-			if (LAST_VULNERABILITY.remove(entity.getUUID()) != null && world != null) {
-				broadcast(world.getServer(), entity.getUUID(), 0.0F);
+			boolean hadState = LAST_DAMAGE.remove(entity.getUUID()) != null;
+			hadState |= LAST_VULNERABILITY.remove(entity.getUUID()) != null;
+			if (hadState && world != null) {
+				broadcast(world.getServer(), entity.getUUID(), 0.0F, 0.0F);
 			}
 		});
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -59,6 +64,7 @@ final class MobIndicatorManager {
 
 	static void onServerStarted(MinecraftServer server) {
 		TRACKED_ENTITIES.clear();
+		LAST_DAMAGE.clear();
 		LAST_VULNERABILITY.clear();
 		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
 		nextScanTick = Long.MIN_VALUE;
@@ -75,7 +81,7 @@ final class MobIndicatorManager {
 			}
 		}
 		if (!enabled) {
-			for (UUID entityUuid : LAST_VULNERABILITY.keySet()) clear(server, entityUuid);
+			for (UUID entityUuid : activeIndicatorEntities()) clear(server, entityUuid);
 			nextScanTick = Long.MIN_VALUE;
 			return;
 		}
@@ -104,21 +110,31 @@ final class MobIndicatorManager {
 			return;
 		}
 
-		Float previous = LAST_VULNERABILITY.get(entry.getKey());
+		float damage = MobEntityManager.resolveMobIndicatorDamage((Mob) entity);
 		float vulnerabilityPercent = EnchantBooksAPIManager.getConfiguredSmiteVulnerabilityPercent(entity)
 			+ DamageVulnerabilityFeatureAPIManager.getDamageVulnerabilityPercent(entity);
-		if (vulnerabilityPercent <= 0.0F) {
-			if (previous != null) clear(server, entry.getKey());
+		Float previousDamage = LAST_DAMAGE.get(entry.getKey());
+		Float previousVulnerability = LAST_VULNERABILITY.get(entry.getKey());
+		if (damage <= 0.0F && vulnerabilityPercent <= 0.0F) {
+			if (previousDamage != null || previousVulnerability != null) clear(server, entry.getKey());
 			return;
 		}
-		if (previous == null || Math.abs(previous - vulnerabilityPercent) > 0.01F) {
-			LAST_VULNERABILITY.put(entry.getKey(), vulnerabilityPercent);
-			broadcast(server, entry.getKey(), vulnerabilityPercent);
+
+		boolean damageChanged = previousDamage == null || Math.abs(previousDamage - damage) > 0.01F;
+		boolean vulnerabilityChanged = previousVulnerability == null
+			|| Math.abs(previousVulnerability - vulnerabilityPercent) > 0.01F;
+		if (damageChanged || vulnerabilityChanged) {
+			if (damage <= 0.0F) LAST_DAMAGE.remove(entry.getKey());
+			else LAST_DAMAGE.put(entry.getKey(), damage);
+			if (vulnerabilityPercent <= 0.0F) LAST_VULNERABILITY.remove(entry.getKey());
+			else LAST_VULNERABILITY.put(entry.getKey(), vulnerabilityPercent);
+			broadcast(server, entry.getKey(), damage, vulnerabilityPercent);
 		}
 	}
 
 	static void onServerStopped() {
 		TRACKED_ENTITIES.clear();
+		LAST_DAMAGE.clear();
 		LAST_VULNERABILITY.clear();
 		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
 		nextScanTick = Long.MIN_VALUE;
@@ -131,22 +147,34 @@ final class MobIndicatorManager {
 	}
 
 	private static void clear(MinecraftServer server, UUID entityUuid) {
-		if (LAST_VULNERABILITY.remove(entityUuid) != null) {
-			broadcast(server, entityUuid, 0.0F);
+		boolean hadState = LAST_DAMAGE.remove(entityUuid) != null;
+		hadState |= LAST_VULNERABILITY.remove(entityUuid) != null;
+		if (hadState) {
+			broadcast(server, entityUuid, 0.0F, 0.0F);
 		}
 	}
 
-	private static void broadcast(MinecraftServer server, UUID entityUuid, float vulnerabilityPercent) {
+	private static Set<UUID> activeIndicatorEntities() {
+		Set<UUID> entityUuids = new HashSet<>(LAST_DAMAGE.keySet());
+		entityUuids.addAll(LAST_VULNERABILITY.keySet());
+		return entityUuids;
+	}
+
+	private static void broadcast(MinecraftServer server, UUID entityUuid, float damage, float vulnerabilityPercent) {
 		if (server == null || entityUuid == null) return;
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			MobIndicatorNetworking.send(player, new MobIndicatorPayloadManager(entityUuid, vulnerabilityPercent));
+			MobIndicatorNetworking.send(player, new MobIndicatorPayloadManager(entityUuid, damage, vulnerabilityPercent));
 		}
 	}
 
 	private static void sendActiveStates(ServerPlayer player) {
 		if (player == null || !MobConfigManager.isMobIndicatorEnabled()) return;
-		for (Map.Entry<UUID, Float> entry : LAST_VULNERABILITY.entrySet()) {
-			MobIndicatorNetworking.send(player, new MobIndicatorPayloadManager(entry.getKey(), entry.getValue()));
+		for (Map.Entry<UUID, LivingEntity> entry : TRACKED_ENTITIES.entrySet()) {
+			if (!(entry.getValue() instanceof Mob mob) || !isManagedMob(mob)) continue;
+			float damage = LAST_DAMAGE.getOrDefault(entry.getKey(), MobEntityManager.resolveMobIndicatorDamage(mob));
+			float vulnerability = LAST_VULNERABILITY.getOrDefault(entry.getKey(), 0.0F);
+			if (damage <= 0.0F && vulnerability <= 0.0F) continue;
+			MobIndicatorNetworking.send(player, new MobIndicatorPayloadManager(entry.getKey(), damage, vulnerability));
 		}
 	}
 }

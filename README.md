@@ -35,7 +35,7 @@ It also modifies and adds certain mechanics to certain mobs.
 
 **Mob Indicator:**
 
-- Displays a mob's health, armor, and debuffs.
+- Displays a mob's health, damage, armor, and debuffs.
 
 **Elite Variants**
 

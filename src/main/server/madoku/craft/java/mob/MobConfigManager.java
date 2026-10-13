@@ -734,9 +734,13 @@ public final class MobConfigManager {
 			buildGoals("hurt-by-target", "target-player", "melee-attack")
 		);
 
+		JsonObject spearComponents = buildComponents(
+			28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
+			"minecraft-entities-piglin.json", "minecraft:golden-spear", null, 0, false, null, null
+		);
+		spearComponents.addProperty(FIELD_WEAPON_DAMAGE, false);
 		variant.add("spear-piglin", buildVariant(
-			buildComponents(28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
-				"minecraft-entities-piglin.json", "minecraft:copper-spear", null, 0, false, null, null),
+			spearComponents,
 			buildSpawnRules(25.0D, "minecraft-equipment-piglin.json"), new JsonObject(),
 			buildGoals("hurt-by-target", "target-player", "melee-attack")
 		));
@@ -795,8 +799,27 @@ public final class MobConfigManager {
 		String passengerType = JSONAPIManager.normalizeRegistryIdentifierForJson(
 			"minecraft:" + jockeyKey.replace("-jockey", "")
 		);
-		variant.add(jockeyKey, buildVariant(new JsonObject(), buildJockeySpawnRules(10.0D, passengerType, "minecraft:bow", "minecraft:spider"), new JsonObject(), new JsonObject()));
+		variant.add(jockeyKey, buildRangedSkeletonJockeyVariant(
+			health, damage, movementSpeed, scale, experienceDrop, rangedDamage, effect, mobDrops, passengerType
+		));
 		return variant;
+	}
+
+	private static JsonObject buildRangedSkeletonJockeyVariant(
+		double health, Double damage, double movementSpeed, double scale, int experienceDrop,
+		double rangedDamage, String effect, String mobDrops, String passengerType
+	) {
+		JsonObject components = buildComponents(
+			health, null, damage, movementSpeed, null, null, null, scale, experienceDrop,
+			rangedDamage, 0.7D, 20.0D, 10.0D, mobDrops, "minecraft:bow", effect, 15, null, null, null
+		);
+		components.addProperty(FIELD_WEAPON_DAMAGE, false);
+		return buildVariant(
+			components,
+			buildJockeySpawnRules(10.0D, passengerType, "minecraft:bow", "minecraft:spider"),
+			buildBehavior(false, true, false, false),
+			buildGoals("hurt-by-target", "target-player", "ranged-attack")
+		);
 	}
 
 	private static JsonObject buildJockeySpawnRules(double weight, String passengerType, String passengerWeapon, String mountType) {
@@ -936,7 +959,7 @@ public final class MobConfigManager {
 		JsonObject broadcastAnger = new JsonObject();
 		broadcastAnger.addProperty(FIELD_ENABLED, true);
 		broadcastAnger.addProperty(FIELD_DURATION, 30);
-		broadcastAnger.addProperty(FIELD_RADIUS, 24.0D);
+		broadcastAnger.addProperty(FIELD_RADIUS, 16.0D);
 		corruptedBehavior.add(FIELD_BROADCAST_ANGER, broadcastAnger);
 
 		JsonObject corruptedGoals = buildGoals("hurt-by-target", "target-player", "melee-attack");
@@ -1060,7 +1083,9 @@ public final class MobConfigManager {
 		debuffEffect.addProperty(FIELD_DURATION, 15.0D);
 		redComponents.add(FIELD_DEBUFF_EFFECT, debuffEffect);
 		variant.add("red-skeleton", buildVariant(redComponents, redRules, new JsonObject(), buildGoals("hurt-by-target", "target-player", "melee-attack")));
-		variant.add("skeleton-jockey", buildVariant(new JsonObject(), buildJockeySpawnRules(10.0D, "minecraft:skeleton", "minecraft:bow", "minecraft:spider"), new JsonObject(), new JsonObject()));
+		variant.add("skeleton-jockey", buildRangedSkeletonJockeyVariant(
+			16.0D, null, 0.24D, 1.0D, 7, 5.0D, null, "minecraft-entities-skeleton.json", "minecraft:skeleton"
+		));
 		return variant;
 	}
 
