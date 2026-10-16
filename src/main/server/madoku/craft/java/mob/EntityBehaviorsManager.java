@@ -82,7 +82,6 @@ public final class EntityBehaviorsManager {
 		private static final int DEFAULT_CHARGE_INTERVAL_TICKS = 20;
 		private static final int DEFAULT_CHARGES_SPEND_DIVISOR = 2;
 		private static final double DEFAULT_GROWTH_PERCENT_PER_CHARGE = 2.0D;
-
 		private static final Map<UUID, BeeNectarState> BEE_NECTAR_STATES = new ConcurrentHashMap<>();
 		private static final Map<UUID, BeeCropTarget> BEE_KNOWN_CROP_TARGETS = new ConcurrentHashMap<>();
 		private static final Map<String, BeeCropReservation> BEE_CROP_RESERVATIONS = new ConcurrentHashMap<>();
@@ -158,188 +157,188 @@ public final class EntityBehaviorsManager {
 				if (!(entity instanceof Bee bee) || !bee.isAlive() || !(bee.level() instanceof ServerLevel level)) {
 					continue;
 				}
-				if (!behaviorOverrideEnabled) {
-					allowBeeHiveReturn(bee);
-					resetBeeNectarCycle(bee.getUUID());
-					continue;
-				}
-				if (!goalsOverrideEnabled) {
-					allowBeeHiveReturn(bee);
-					resetBeeNectarCycle(bee.getUUID());
-					continue;
-				}
-				if (!bee.hasNectar()) {
-					allowBeeHiveReturn(bee);
-					resetBeeNectarCycle(bee.getUUID());
-					continue;
-				}
-				JsonObject behaviorRoot = MobEntityManager.resolveBeeBehaviorRoot(bee);
-				JsonObject pollinateCropsRoot = getObject(behaviorRoot, "pollinate-crops");
-				boolean pollinateCropsEnabled = getBoolean(pollinateCropsRoot, MobConfigManager.FIELD_ENABLED, false);
-				if (!pollinateCropsEnabled) {
-					allowBeeHiveReturn(bee);
-					resetBeeNectarCycle(bee.getUUID());
-					continue;
-				}
-				// pollinate-crops is the override mode and takes precedence over pollination behavior config.
-				JsonObject pollinationRoot = getObject(behaviorRoot, "pollination");
-				int nectarTotalCharges = Math.max(1, getInt(pollinateCropsRoot, "nectar_total_charges", DEFAULT_NECTAR_TOTAL_CHARGES));
-				int searchDurationTicks = Math.max(1, getInt(pollinateCropsRoot, "search_duration_ticks", DEFAULT_SEARCH_DURATION_TICKS));
-				int searchRadiusHorizontal = Math.max(1, getInt(pollinateCropsRoot, "search_radius_horizontal", DEFAULT_SEARCH_RADIUS_HORIZONTAL));
-				int searchRadiusVertical = Math.max(0, getInt(pollinateCropsRoot, "search_radius_vertical", DEFAULT_SEARCH_RADIUS_VERTICAL));
-				double cropReachDistanceSqr = Math.max(0.25D, getDouble(pollinateCropsRoot, "crop_reach_distance_sqr", DEFAULT_CROP_REACH_DISTANCE_SQR));
-				int cropReservationTtlTicks = Math.max(1, getInt(pollinateCropsRoot, "crop_reservation_ttl_ticks", DEFAULT_CROP_RESERVATION_TTL_TICKS));
-				double moveSpeedModifier = Math.max(0.05D, getDouble(pollinateCropsRoot, "move_speed_modifier", DEFAULT_MOVE_SPEED_MODIFIER));
-				double arrivalThreshold = Math.max(
-					0.01D,
-					getDouble(
-						pollinateCropsRoot,
-						"arrival_threshold",
-						getDouble(pollinationRoot, "arrival_threshold", DEFAULT_ARRIVAL_THRESHOLD)
-					)
-				);
-				int positionChangeChance = Math.max(
-					0,
-					Math.min(
-						100,
-						getInt(
+					if (!behaviorOverrideEnabled) {
+						allowBeeHiveReturn(bee);
+						resetBeeNectarCycle(bee.getUUID());
+						continue;
+					}
+					if (!goalsOverrideEnabled) {
+						allowBeeHiveReturn(bee);
+						resetBeeNectarCycle(bee.getUUID());
+						continue;
+					}
+					if (!bee.hasNectar()) {
+						allowBeeHiveReturn(bee);
+						resetBeeNectarCycle(bee.getUUID());
+						continue;
+					}
+					JsonObject behaviorRoot = MobEntityManager.resolveBeeBehaviorRoot(bee);
+					JsonObject pollinateCropsRoot = getObject(behaviorRoot, "pollinate-crops");
+					boolean pollinateCropsEnabled = getBoolean(pollinateCropsRoot, MobConfigManager.FIELD_ENABLED, false);
+					if (!pollinateCropsEnabled) {
+						allowBeeHiveReturn(bee);
+						resetBeeNectarCycle(bee.getUUID());
+						continue;
+					}
+					// pollinate-crops is the override mode and takes precedence over pollination behavior config.
+					JsonObject pollinationRoot = getObject(behaviorRoot, "pollination");
+					int nectarTotalCharges = Math.max(1, getInt(pollinateCropsRoot, "nectar_total_charges", DEFAULT_NECTAR_TOTAL_CHARGES));
+					int searchDurationTicks = Math.max(1, getInt(pollinateCropsRoot, "search_duration_ticks", DEFAULT_SEARCH_DURATION_TICKS));
+					int searchRadiusHorizontal = Math.max(1, getInt(pollinateCropsRoot, "search_radius_horizontal", DEFAULT_SEARCH_RADIUS_HORIZONTAL));
+					int searchRadiusVertical = Math.max(0, getInt(pollinateCropsRoot, "search_radius_vertical", DEFAULT_SEARCH_RADIUS_VERTICAL));
+					double cropReachDistanceSqr = Math.max(0.25D, getDouble(pollinateCropsRoot, "crop_reach_distance_sqr", DEFAULT_CROP_REACH_DISTANCE_SQR));
+					int cropReservationTtlTicks = Math.max(1, getInt(pollinateCropsRoot, "crop_reservation_ttl_ticks", DEFAULT_CROP_RESERVATION_TTL_TICKS));
+					double moveSpeedModifier = Math.max(0.05D, getDouble(pollinateCropsRoot, "move_speed_modifier", DEFAULT_MOVE_SPEED_MODIFIER));
+					double arrivalThreshold = Math.max(
+						0.01D,
+						getDouble(
 							pollinateCropsRoot,
-							"position_change_chance",
-							getInt(pollinationRoot, "position_change_chance", DEFAULT_POSITION_CHANGE_CHANCE)
+							"arrival_threshold",
+							getDouble(pollinationRoot, "arrival_threshold", DEFAULT_ARRIVAL_THRESHOLD)
 						)
-					)
-				);
-				double hoverHeightWithinFlower = Math.max(
-					0.0D,
-					getDouble(
-						pollinateCropsRoot,
-						"hover_height_within_crop",
-						getDouble(pollinationRoot, "hover_height_within_flower", DEFAULT_HOVER_HEIGHT_WITHIN_FLOWER)
-					)
-				);
-				double hoverPosOffset = Math.max(
-					0.0D,
-					getDouble(
-						pollinateCropsRoot,
-						"hover_pos_offset",
-						getDouble(pollinationRoot, "hover_pos_offset", DEFAULT_HOVER_POS_OFFSET)
-					)
-				);
-				int chargeIntervalTicks = Math.max(1, getInt(pollinateCropsRoot, "charge_interval_ticks", DEFAULT_CHARGE_INTERVAL_TICKS));
-				int chargesSpendDivisor = Math.max(1, getInt(pollinateCropsRoot, "charges_spend_divisor", DEFAULT_CHARGES_SPEND_DIVISOR));
-				double growthPercentPerCharge = Math.max(0.0D, getDouble(pollinateCropsRoot, "growth_percent_per_charge", DEFAULT_GROWTH_PERCENT_PER_CHARGE));
-				double arrivalThresholdSqr = arrivalThreshold * arrivalThreshold;
-				UUID beeId = bee.getUUID();
-				if (BEE_MINIMUM_REACHED_THIS_NECTAR_CYCLE.contains(beeId)) {
-					allowBeeHiveReturn(bee);
-					clearBeeNectarState(beeId);
-					continue;
-				}
-
-				BeeNectarState state = BEE_NECTAR_STATES.computeIfAbsent(
-					beeId,
-					id -> BeeNectarState.create(nectarTotalCharges, chargesSpendDivisor, nowTick + searchDurationTicks)
-				);
-				if (state.chargesRemaining <= 0 || state.searchExpiresAtTick <= nowTick) {
-					allowBeeHiveReturn(bee);
-					clearBeeNectarState(beeId);
-					continue;
-				}
-				if (state.chargesRemaining <= state.minimumChargesRemaining) {
-					BEE_MINIMUM_REACHED_THIS_NECTAR_CYCLE.add(beeId);
-					allowBeeHiveReturn(bee);
-					clearBeeNectarState(beeId);
-					continue;
-				}
-
-				int stayOutTicks = (int) Math.max(0L, state.searchExpiresAtTick - nowTick);
-				bee.setStayOutOfHiveCountdown(stayOutTicks);
-				if (state.hasTarget() && !isBeeCropTargetStillValid(level, state, beeId, nowTick, cropReservationTtlTicks)) {
-					releaseBeeCropReservation(beeId, state.reservedCropKey);
-					forgetKnownCropTarget(beeId, state.reservedCropKey);
-					state.clearTarget();
-				}
-
-				if (!state.hasTarget()) {
-					BeeCropTarget target = findKnownBeeCropTarget(
-						level,
-						beeId,
-						nowTick,
-						cropReservationTtlTicks
 					);
-					if (target == null && nowTick >= state.nextCropSearchAtTick) {
-						target = findBeeCropTarget(
-							bee,
+					int positionChangeChance = Math.max(
+						0,
+						Math.min(
+							100,
+							getInt(
+								pollinateCropsRoot,
+								"position_change_chance",
+								getInt(pollinationRoot, "position_change_chance", DEFAULT_POSITION_CHANGE_CHANCE)
+							)
+						)
+					);
+					double hoverHeightWithinFlower = Math.max(
+						0.0D,
+						getDouble(
+							pollinateCropsRoot,
+							"hover_height_within_crop",
+							getDouble(pollinationRoot, "hover_height_within_flower", DEFAULT_HOVER_HEIGHT_WITHIN_FLOWER)
+						)
+					);
+					double hoverPosOffset = Math.max(
+						0.0D,
+						getDouble(
+							pollinateCropsRoot,
+							"hover_pos_offset",
+							getDouble(pollinationRoot, "hover_pos_offset", DEFAULT_HOVER_POS_OFFSET)
+						)
+					);
+					int chargeIntervalTicks = Math.max(1, getInt(pollinateCropsRoot, "charge_interval_ticks", DEFAULT_CHARGE_INTERVAL_TICKS));
+					int chargesSpendDivisor = Math.max(1, getInt(pollinateCropsRoot, "charges_spend_divisor", DEFAULT_CHARGES_SPEND_DIVISOR));
+					double growthPercentPerCharge = Math.max(0.0D, getDouble(pollinateCropsRoot, "growth_percent_per_charge", DEFAULT_GROWTH_PERCENT_PER_CHARGE));
+					double arrivalThresholdSqr = arrivalThreshold * arrivalThreshold;
+					UUID beeId = bee.getUUID();
+					if (BEE_MINIMUM_REACHED_THIS_NECTAR_CYCLE.contains(beeId)) {
+						allowBeeHiveReturn(bee);
+						clearBeeNectarState(beeId);
+						continue;
+					}
+
+					BeeNectarState state = BEE_NECTAR_STATES.computeIfAbsent(
+						beeId,
+						id -> BeeNectarState.create(nectarTotalCharges, chargesSpendDivisor, nowTick + searchDurationTicks)
+					);
+					if (state.chargesRemaining <= 0 || state.searchExpiresAtTick <= nowTick) {
+						allowBeeHiveReturn(bee);
+						clearBeeNectarState(beeId);
+						continue;
+					}
+					if (state.chargesRemaining <= state.minimumChargesRemaining) {
+						BEE_MINIMUM_REACHED_THIS_NECTAR_CYCLE.add(beeId);
+						allowBeeHiveReturn(bee);
+						clearBeeNectarState(beeId);
+						continue;
+					}
+
+					int stayOutTicks = (int) Math.max(0L, state.searchExpiresAtTick - nowTick);
+					bee.setStayOutOfHiveCountdown(stayOutTicks);
+					if (state.hasTarget() && !isBeeCropTargetStillValid(level, state, beeId, nowTick, cropReservationTtlTicks)) {
+						releaseBeeCropReservation(beeId, state.reservedCropKey);
+						forgetKnownCropTarget(beeId, state.reservedCropKey);
+						state.clearTarget();
+					}
+
+					if (!state.hasTarget()) {
+						BeeCropTarget target = findKnownBeeCropTarget(
 							level,
 							beeId,
 							nowTick,
-							searchRadiusHorizontal,
-							searchRadiusVertical,
 							cropReservationTtlTicks
 						);
-						state.nextCropSearchAtTick = nowTick + DEFAULT_CROP_SEARCH_RETRY_TICKS;
+						if (target == null && nowTick >= state.nextCropSearchAtTick) {
+							target = findBeeCropTarget(
+								bee,
+								level,
+								beeId,
+								nowTick,
+								searchRadiusHorizontal,
+								searchRadiusVertical,
+								cropReservationTtlTicks
+							);
+							state.nextCropSearchAtTick = nowTick + DEFAULT_CROP_SEARCH_RETRY_TICKS;
+						}
+						if (target == null) {
+							continue;
+						}
+						BEE_KNOWN_CROP_TARGETS.put(beeId, target);
+						state.assignTarget(target.cropKey(), target.pos(), target.levelId());
 					}
-					if (target == null) {
+
+					BlockPos targetPos = BlockPos.of(state.reservedCropPos);
+					state.updateHoverTarget(
+						bee,
+						targetPos,
+						hoverPosOffset,
+						hoverHeightWithinFlower,
+						arrivalThresholdSqr,
+						positionChangeChance
+					);
+					bee.getNavigation().moveTo(
+						state.hoverTargetX,
+						state.hoverTargetY,
+						state.hoverTargetZ,
+						moveSpeedModifier
+					);
+
+					if (bee.distanceToSqr(targetPos.getX() + 0.5D, targetPos.getY() + 0.5D, targetPos.getZ() + 0.5D) > cropReachDistanceSqr) {
 						continue;
 					}
-					BEE_KNOWN_CROP_TARGETS.put(beeId, target);
-					state.assignTarget(target.cropKey(), target.pos(), target.levelId());
-				}
 
-				BlockPos targetPos = BlockPos.of(state.reservedCropPos);
-				state.updateHoverTarget(
-					bee,
-					targetPos,
-					hoverPosOffset,
-					hoverHeightWithinFlower,
-					arrivalThresholdSqr,
-					positionChangeChance
-				);
-				bee.getNavigation().moveTo(
-					state.hoverTargetX,
-					state.hoverTargetY,
-					state.hoverTargetZ,
-					moveSpeedModifier
-				);
+					BlockState targetState = level.getBlockState(targetPos);
+					if (!isBeeSupportedCrop(targetState) || isBeeCropFullyGrown(targetState) || !isFarmlandBelow(level, targetPos)) {
+						releaseBeeCropReservation(beeId, state.reservedCropKey);
+						state.clearTarget();
+						continue;
+					}
+					if (!state.canSpendCharge(nowTick)) {
+						continue;
+					}
 
-				if (bee.distanceToSqr(targetPos.getX() + 0.5D, targetPos.getY() + 0.5D, targetPos.getZ() + 0.5D) > cropReachDistanceSqr) {
-					continue;
-				}
+					int chargesToSpend = 1;
+					boolean farmingEnabled = MobFeatureAPIManager.isBeeCropGrowthEnabled();
+					boolean appliedGrowth;
+					double percentGrowth = chargesToSpend * growthPercentPerCharge;
+					if (farmingEnabled) {
+						appliedGrowth = MobFeatureAPIManager.applyBeeCropGrowth(level, targetPos, percentGrowth, "bee_nectar");
+					} else {
+						appliedGrowth = growCropBySingleStage(level, targetPos, targetState);
+					}
+					if (!appliedGrowth) {
+						releaseBeeCropReservation(beeId, state.reservedCropKey);
+						state.clearTarget();
+						continue;
+					}
 
-				BlockState targetState = level.getBlockState(targetPos);
-				if (!isBeeSupportedCrop(targetState) || isBeeCropFullyGrown(targetState) || !isFarmlandBelow(level, targetPos)) {
+					state.chargesRemaining = Math.max(0, state.chargesRemaining - chargesToSpend);
+					state.markChargeSpent(nowTick, chargeIntervalTicks);
 					releaseBeeCropReservation(beeId, state.reservedCropKey);
 					state.clearTarget();
-					continue;
-				}
-				if (!state.canSpendCharge(nowTick)) {
-					continue;
-				}
-
-				int chargesToSpend = 1;
-				boolean farmingEnabled = MobFeatureAPIManager.isBeeCropGrowthEnabled();
-				boolean appliedGrowth;
-				double percentGrowth = chargesToSpend * growthPercentPerCharge;
-				if (farmingEnabled) {
-					appliedGrowth = MobFeatureAPIManager.applyBeeCropGrowth(level, targetPos, percentGrowth, "bee_nectar");
-				} else {
-					appliedGrowth = growCropBySingleStage(level, targetPos, targetState);
-				}
-				if (!appliedGrowth) {
-					releaseBeeCropReservation(beeId, state.reservedCropKey);
-					state.clearTarget();
-					continue;
-				}
-
-				state.chargesRemaining = Math.max(0, state.chargesRemaining - chargesToSpend);
-				state.markChargeSpent(nowTick, chargeIntervalTicks);
-				releaseBeeCropReservation(beeId, state.reservedCropKey);
-				state.clearTarget();
-				if (state.chargesRemaining <= state.minimumChargesRemaining) {
-					BEE_MINIMUM_REACHED_THIS_NECTAR_CYCLE.add(beeId);
-					allowBeeHiveReturn(bee);
-					clearBeeNectarState(beeId);
-				}
+					if (state.chargesRemaining <= state.minimumChargesRemaining) {
+						BEE_MINIMUM_REACHED_THIS_NECTAR_CYCLE.add(beeId);
+						allowBeeHiveReturn(bee);
+						clearBeeNectarState(beeId);
+					}
 			}
 			pruneBeeCropReservations(nowTick);
 			return !BEE_NECTAR_STATES.isEmpty() || !BEE_CROP_RESERVATIONS.isEmpty();
@@ -363,37 +362,55 @@ public final class EntityBehaviorsManager {
 			double bestProgress = Double.MAX_VALUE;
 			int tieCount = 0;
 			String levelId = ChunkAPIManager.normalizeLevelIdentifier(level.dimension().toString());
-			for (BlockPos candidate : BlockPos.betweenClosed(
-				center.offset(-searchRadiusHorizontal, -searchRadiusVertical, -searchRadiusHorizontal),
-				center.offset(searchRadiusHorizontal, searchRadiusVertical, searchRadiusHorizontal)
-			)) {
-				BlockState state = level.getBlockState(candidate);
-				if (!isBeeSupportedCrop(state) || isBeeCropFullyGrown(state) || !isFarmlandBelow(level, candidate)) {
-					continue;
-				}
-				String cropKey = beeCropKey(levelId, candidate.asLong());
-				BeeCropReservation reservation = BEE_CROP_RESERVATIONS.get(cropKey);
-				if (reservation != null && (reservation.expiresAtTick <= nowTick)) {
-					BEE_CROP_RESERVATIONS.remove(cropKey, reservation);
-					reservation = null;
-				}
-				if (reservation != null && !beeId.equals(reservation.beeId)) {
-					continue;
-				}
-				double progress = getCropGrowthProgress(state);
-				if (progress < bestProgress - 1.0E-6D) {
-					best = candidate.immutable();
-					bestKey = cropKey;
-					bestProgress = progress;
-					tieCount = 1;
-					continue;
-				}
-				if (Math.abs(progress - bestProgress) <= 1.0E-6D) {
-					tieCount++;
-					// Reservoir sampling: uniform random among equal-growth candidates.
-					if (bee.getRandom().nextInt(tieCount) == 0) {
-						best = candidate.immutable();
-						bestKey = cropKey;
+			int minX = center.getX() - searchRadiusHorizontal;
+			int maxX = center.getX() + searchRadiusHorizontal;
+			int minY = Math.max(level.getMinY() + 1, center.getY() - searchRadiusVertical);
+			int maxY = Math.min(level.getMaxY() - 1, center.getY() + searchRadiusVertical);
+			int minZ = center.getZ() - searchRadiusHorizontal;
+			int maxZ = center.getZ() + searchRadiusHorizontal;
+			BlockPos.MutableBlockPos candidate = new BlockPos.MutableBlockPos();
+			BlockPos.MutableBlockPos below = new BlockPos.MutableBlockPos();
+			for (int x = minX; x <= maxX; x++) {
+				for (int z = minZ; z <= maxZ; z++) {
+					if (!level.getChunkSource().hasChunk(x >> 4, z >> 4)) {
+						continue;
+					}
+					for (int y = minY; y <= maxY; y++) {
+						candidate.set(x, y, z);
+						BlockState state = level.getBlockState(candidate);
+						if (!isBeeSupportedCrop(state) || isBeeCropFullyGrown(state)) {
+							continue;
+						}
+						below.set(x, y - 1, z);
+						if (!level.getBlockState(below).is(Blocks.FARMLAND)) {
+							continue;
+						}
+						long candidatePos = candidate.asLong();
+						String cropKey = beeCropKey(levelId, candidatePos);
+						BeeCropReservation reservation = BEE_CROP_RESERVATIONS.get(cropKey);
+						if (reservation != null && reservation.expiresAtTick <= nowTick) {
+							BEE_CROP_RESERVATIONS.remove(cropKey, reservation);
+							reservation = null;
+						}
+						if (reservation != null && !beeId.equals(reservation.beeId)) {
+							continue;
+						}
+						double progress = getCropGrowthProgress(state);
+						if (progress < bestProgress - 1.0E-6D) {
+							best = candidate.immutable();
+							bestKey = cropKey;
+							bestProgress = progress;
+							tieCount = 1;
+							continue;
+						}
+						if (Math.abs(progress - bestProgress) <= 1.0E-6D) {
+							tieCount++;
+							// Reservoir sampling: uniform random among equal-growth candidates.
+							if (bee.getRandom().nextInt(tieCount) == 0) {
+								best = candidate.immutable();
+								bestKey = cropKey;
+							}
+						}
 					}
 				}
 			}

@@ -1,5 +1,6 @@
 package madoku.craft.java.mob;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
@@ -13,10 +14,12 @@ import madoku.craft.java.core.time.TimeAPIManager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.phys.AABB;
 
 /** Tracks server-authoritative state displayed by the mob indicator above managed entities. */
 final class MobIndicatorManager {
@@ -26,9 +29,15 @@ final class MobIndicatorManager {
 	private static final String ADAPTIVE_INTERVAL_ID = "madoku-mob-indicators";
 	private static final long MIN_SCAN_INTERVAL_TICKS = 1L;
 	private static final long MAX_SCAN_INTERVAL_TICKS = 4L;
+	private static final double INDICATOR_TRACK_DISTANCE = 32.0D;
+	private static final long FULL_RECONCILIATION_INTERVAL_TICKS = 100L;
+	private static final long DAMAGE_CACHE_TTL_TICKS = 4L;
 	private static long nextScanTick = Long.MIN_VALUE;
+	private static long nextFullReconciliationTick = Long.MIN_VALUE;
 	private static boolean initialized;
 	private static Boolean lastBroadcastSetting;
+	private static final Map<UUID, CachedIndicatorDamage> DAMAGE_CACHE = new ConcurrentHashMap<>();
+	private static final Set<UUID> DIRTY_ENTITIES = ConcurrentHashMap.newKeySet();
 
 	private MobIndicatorManager() {
 	}
@@ -40,13 +49,16 @@ final class MobIndicatorManager {
 		initialized = true;
 		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
 			if (isManagedMob(entity)) {
-				TRACKED_ENTITIES.put(entity.getUUID(), (LivingEntity) entity);
+				DIRTY_ENTITIES.add(entity.getUUID());
+				DAMAGE_CACHE.remove(entity.getUUID());
 				nextScanTick = Long.MIN_VALUE;
 			}
 		});
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
 			if (!isManagedMob(entity)) return;
 			TRACKED_ENTITIES.remove(entity.getUUID());
+			DIRTY_ENTITIES.remove(entity.getUUID());
+			DAMAGE_CACHE.remove(entity.getUUID());
 			boolean hadState = LAST_DAMAGE.remove(entity.getUUID()) != null;
 			hadState |= LAST_VULNERABILITY.remove(entity.getUUID()) != null;
 			if (hadState && world != null) {
@@ -66,8 +78,11 @@ final class MobIndicatorManager {
 		TRACKED_ENTITIES.clear();
 		LAST_DAMAGE.clear();
 		LAST_VULNERABILITY.clear();
+		DAMAGE_CACHE.clear();
+		DIRTY_ENTITIES.clear();
 		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
 		nextScanTick = Long.MIN_VALUE;
+		nextFullReconciliationTick = Long.MIN_VALUE;
 		lastBroadcastSetting = null;
 	}
 
@@ -83,9 +98,15 @@ final class MobIndicatorManager {
 		if (!enabled) {
 			for (UUID entityUuid : activeIndicatorEntities()) clear(server, entityUuid);
 			nextScanTick = Long.MIN_VALUE;
+			DIRTY_ENTITIES.clear();
+			DAMAGE_CACHE.clear();
 			return;
 		}
-		if (TRACKED_ENTITIES.isEmpty()) return;
+		if (server.getPlayerList().getPlayers().isEmpty()) {
+			clearNearbyEntities(server);
+			nextScanTick = Long.MIN_VALUE;
+			return;
+		}
 
 		long now = Math.max(0L, TimeAPIManager.getGameplayTicks());
 		if (nextScanTick != Long.MIN_VALUE && now < nextScanTick) return;
@@ -96,27 +117,42 @@ final class MobIndicatorManager {
 			MAX_SCAN_INTERVAL_TICKS
 		);
 		nextScanTick = now + Math.max(1L, interval);
+		scanEntities(server, now);
+	}
 
-		for (Map.Entry<UUID, LivingEntity> entry : TRACKED_ENTITIES.entrySet()) {
-			tickEntity(server, entry);
+	private static void scanEntities(MinecraftServer server, long now) {
+		refreshNearbyEntities(server, now);
+		Set<UUID> dirtyEntities = new HashSet<>(DIRTY_ENTITIES);
+		for (UUID entityUuid : dirtyEntities) {
+			DIRTY_ENTITIES.remove(entityUuid);
+			LivingEntity entity = TRACKED_ENTITIES.get(entityUuid);
+			if (entity != null) {
+				tickEntity(server, entityUuid, entity, now);
+			}
 		}
 	}
 
-	private static void tickEntity(MinecraftServer server, Map.Entry<UUID, LivingEntity> entry) {
-		LivingEntity entity = entry.getValue();
+	private static void tickEntity(
+		MinecraftServer server,
+		UUID entityUuid,
+		LivingEntity entity,
+		long now
+	) {
 		if (!isManagedMob(entity) || !entity.isAlive()) {
-			TRACKED_ENTITIES.remove(entry.getKey(), entity);
-			clear(server, entry.getKey());
+			TRACKED_ENTITIES.remove(entityUuid, entity);
+			clear(server, entityUuid);
 			return;
 		}
 
-		float damage = MobEntityManager.resolveMobIndicatorDamage((Mob) entity);
+		float damage = resolveCachedIndicatorDamage((Mob) entity, now);
+
 		float vulnerabilityPercent = EnchantBooksAPIManager.getConfiguredSmiteVulnerabilityPercent(entity)
 			+ DamageVulnerabilityFeatureAPIManager.getDamageVulnerabilityPercent(entity);
-		Float previousDamage = LAST_DAMAGE.get(entry.getKey());
-		Float previousVulnerability = LAST_VULNERABILITY.get(entry.getKey());
+
+		Float previousDamage = LAST_DAMAGE.get(entityUuid);
+		Float previousVulnerability = LAST_VULNERABILITY.get(entityUuid);
 		if (damage <= 0.0F && vulnerabilityPercent <= 0.0F) {
-			if (previousDamage != null || previousVulnerability != null) clear(server, entry.getKey());
+			if (previousDamage != null || previousVulnerability != null) clear(server, entityUuid);
 			return;
 		}
 
@@ -124,20 +160,99 @@ final class MobIndicatorManager {
 		boolean vulnerabilityChanged = previousVulnerability == null
 			|| Math.abs(previousVulnerability - vulnerabilityPercent) > 0.01F;
 		if (damageChanged || vulnerabilityChanged) {
-			if (damage <= 0.0F) LAST_DAMAGE.remove(entry.getKey());
-			else LAST_DAMAGE.put(entry.getKey(), damage);
-			if (vulnerabilityPercent <= 0.0F) LAST_VULNERABILITY.remove(entry.getKey());
-			else LAST_VULNERABILITY.put(entry.getKey(), vulnerabilityPercent);
-			broadcast(server, entry.getKey(), damage, vulnerabilityPercent);
+			if (damage <= 0.0F) LAST_DAMAGE.remove(entityUuid);
+			else LAST_DAMAGE.put(entityUuid, damage);
+			if (vulnerabilityPercent <= 0.0F) LAST_VULNERABILITY.remove(entityUuid);
+			else LAST_VULNERABILITY.put(entityUuid, vulnerabilityPercent);
+			broadcast(server, entityUuid, damage, vulnerabilityPercent);
 		}
+	}
+
+	private static void refreshNearbyEntities(MinecraftServer server, long now) {
+		Map<UUID, LivingEntity> nearbyEntities = new HashMap<>();
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (!(player.level() instanceof ServerLevel level)) {
+				continue;
+			}
+			AABB trackingArea = player.getBoundingBox().inflate(INDICATOR_TRACK_DISTANCE);
+			for (Mob mob : level.getEntitiesOfClass(Mob.class, trackingArea, MobIndicatorManager::isManagedMob)) {
+				nearbyEntities.put(mob.getUUID(), mob);
+			}
+		}
+
+		for (Map.Entry<UUID, LivingEntity> entry : new HashMap<>(TRACKED_ENTITIES).entrySet()) {
+			if (nearbyEntities.containsKey(entry.getKey())) {
+				continue;
+			}
+			if (TRACKED_ENTITIES.remove(entry.getKey(), entry.getValue())) {
+				DIRTY_ENTITIES.remove(entry.getKey());
+				DAMAGE_CACHE.remove(entry.getKey());
+				clear(server, entry.getKey());
+			}
+		}
+
+		for (Map.Entry<UUID, LivingEntity> entry : nearbyEntities.entrySet()) {
+			LivingEntity previous = TRACKED_ENTITIES.put(entry.getKey(), entry.getValue());
+			if (previous == null || previous != entry.getValue()) {
+				DIRTY_ENTITIES.add(entry.getKey());
+				DAMAGE_CACHE.remove(entry.getKey());
+			}
+		}
+
+		if (nextFullReconciliationTick == Long.MIN_VALUE || now >= nextFullReconciliationTick) {
+			DIRTY_ENTITIES.addAll(nearbyEntities.keySet());
+			nextFullReconciliationTick = now + FULL_RECONCILIATION_INTERVAL_TICKS;
+		}
+	}
+
+	private static void clearNearbyEntities(MinecraftServer server) {
+		for (UUID entityUuid : new HashSet<>(TRACKED_ENTITIES.keySet())) {
+			TRACKED_ENTITIES.remove(entityUuid);
+			DIRTY_ENTITIES.remove(entityUuid);
+			DAMAGE_CACHE.remove(entityUuid);
+			clear(server, entityUuid);
+		}
+		DAMAGE_CACHE.clear();
+	}
+
+	static void markDirty(LivingEntity entity) {
+		if (!MobConfigManager.isMobIndicatorEnabled() || !isManagedMob(entity)) {
+			return;
+		}
+		UUID entityUuid = entity.getUUID();
+		if (TRACKED_ENTITIES.containsKey(entityUuid)) {
+			DAMAGE_CACHE.remove(entityUuid);
+			DIRTY_ENTITIES.add(entityUuid);
+		}
+	}
+
+	private static float resolveCachedIndicatorDamage(Mob mob, long now) {
+		UUID entityUuid = mob.getUUID();
+		CachedIndicatorDamage cached = DAMAGE_CACHE.get(entityUuid);
+		if (cached != null && now < cached.expiresAtTick()) {
+			return cached.damage();
+		}
+
+		float damage = MobEntityManager.resolveMobIndicatorDamage(mob);
+		DAMAGE_CACHE.put(
+			entityUuid,
+			new CachedIndicatorDamage(damage, now + DAMAGE_CACHE_TTL_TICKS)
+		);
+		return damage;
+	}
+
+	private record CachedIndicatorDamage(float damage, long expiresAtTick) {
 	}
 
 	static void onServerStopped() {
 		TRACKED_ENTITIES.clear();
 		LAST_DAMAGE.clear();
 		LAST_VULNERABILITY.clear();
+		DAMAGE_CACHE.clear();
+		DIRTY_ENTITIES.clear();
 		AdaptiveIntervalAPIManager.clearSystem(ADAPTIVE_INTERVAL_ID);
 		nextScanTick = Long.MIN_VALUE;
+		nextFullReconciliationTick = Long.MIN_VALUE;
 		lastBroadcastSetting = null;
 	}
 
@@ -171,7 +286,10 @@ final class MobIndicatorManager {
 		if (player == null || !MobConfigManager.isMobIndicatorEnabled()) return;
 		for (Map.Entry<UUID, LivingEntity> entry : TRACKED_ENTITIES.entrySet()) {
 			if (!(entry.getValue() instanceof Mob mob) || !isManagedMob(mob)) continue;
-			float damage = LAST_DAMAGE.getOrDefault(entry.getKey(), MobEntityManager.resolveMobIndicatorDamage(mob));
+			Float cachedDamage = LAST_DAMAGE.get(entry.getKey());
+			float damage = cachedDamage != null
+				? cachedDamage
+				: resolveCachedIndicatorDamage(mob, Math.max(0L, TimeAPIManager.getGameplayTicks()));
 			float vulnerability = LAST_VULNERABILITY.getOrDefault(entry.getKey(), 0.0F);
 			if (damage <= 0.0F && vulnerability <= 0.0F) continue;
 			MobIndicatorNetworking.send(player, new MobIndicatorPayloadManager(entry.getKey(), damage, vulnerability));

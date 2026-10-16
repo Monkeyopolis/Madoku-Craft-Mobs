@@ -90,6 +90,8 @@ public final class MobEntityManager {
 	private static final Map<UUID, Entity> TRACKED_AGEABLE_MOBS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Mob> TRACKED_MOBS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Integer> MOB_HURT_TIMESTAMPS = new ConcurrentHashMap<>();
+	private static final java.util.Set<UUID> DIRTY_HURT_PARENTS = ConcurrentHashMap.newKeySet();
+	private static final Map<UUID, CachedFollowParentSettings> FOLLOW_PARENT_SETTINGS = new ConcurrentHashMap<>();
 	private static final Map<UUID, Boolean> CONFIGURED_MOB_BABY_STATES = new ConcurrentHashMap<>();
 	private static final Map<UUID, ActiveHealthReduction> ACTIVE_HEALTH_REDUCTIONS = new ConcurrentHashMap<>();
 	private static final java.util.Set<UUID> APPLIED_SPAWN_OVERRIDES = ConcurrentHashMap.newKeySet();
@@ -109,6 +111,7 @@ public final class MobEntityManager {
 			}
 			if (entity instanceof Mob mob) {
 				TRACKED_MOBS.put(entity.getUUID(), mob);
+				DIRTY_HURT_PARENTS.add(entity.getUUID());
 			}
 			if (entity instanceof LivingEntity livingEntity && !MobFeatureAPIManager.isManagedPet(livingEntity)) {
 				boolean reappliedMobOverrides = applyLoadedEntityRules(livingEntity);
@@ -131,6 +134,8 @@ public final class MobEntityManager {
 			TRACKED_AGEABLE_MOBS.remove(entity.getUUID());
 			TRACKED_MOBS.remove(entity.getUUID());
 			MOB_HURT_TIMESTAMPS.remove(entity.getUUID());
+			DIRTY_HURT_PARENTS.remove(entity.getUUID());
+			FOLLOW_PARENT_SETTINGS.remove(entity.getUUID());
 			ActiveHealthReduction healthReduction = ACTIVE_HEALTH_REDUCTIONS.remove(entity.getUUID());
 			if (healthReduction != null) {
 				removeConfiguredHealthReduction(healthReduction.target());
@@ -150,6 +155,8 @@ public final class MobEntityManager {
 		TRACKED_AGEABLE_MOBS.clear();
 		TRACKED_MOBS.clear();
 		MOB_HURT_TIMESTAMPS.clear();
+		DIRTY_HURT_PARENTS.clear();
+		FOLLOW_PARENT_SETTINGS.clear();
 		clearConfiguredHealthReductions();
 		EntityComponentsManager.clearMobBabySettingsCache();
 		CONFIGURED_MOB_BABY_STATES.clear();
@@ -190,6 +197,8 @@ public final class MobEntityManager {
 		TRACKED_AGEABLE_MOBS.clear();
 		TRACKED_MOBS.clear();
 		MOB_HURT_TIMESTAMPS.clear();
+		DIRTY_HURT_PARENTS.clear();
+		FOLLOW_PARENT_SETTINGS.clear();
 		clearConfiguredHealthReductions();
 		EntityComponentsManager.clearMobBabySettingsCache();
 		CONFIGURED_MOB_BABY_STATES.clear();
@@ -767,6 +776,10 @@ public final class MobEntityManager {
 	public static void handleMobDamaged(LivingEntity victim, DamageSource source) {
 		if (victim == null || source == null || !MobConfigManager.isEnabled() || victim.level().isClientSide()) {
 			return;
+		}
+		MobIndicatorManager.markDirty(victim);
+		if (victim instanceof Mob mob) {
+			DIRTY_HURT_PARENTS.add(mob.getUUID());
 		}
 		LivingEntity attacker = resolveDamageSourceLivingAttacker(source);
 		if (attacker == null || !attacker.isAlive() || attacker == victim) {
@@ -1620,6 +1633,7 @@ public final class MobEntityManager {
 					ageableMob.setAge(AgeableMob.BABY_START_AGE);
 				}
 			} else if (Boolean.TRUE.equals(previousBaby)) {
+				DIRTY_HURT_PARENTS.add(entity.getUUID());
 				boolean reappliedMobOverrides = applyLoadedEntityRules(livingEntity);
 				if (livingEntity.level() instanceof ServerLevel level) {
 					applyDifficultyScalingAfterMobOverrides(livingEntity, level, reappliedMobOverrides);
@@ -1630,15 +1644,26 @@ public final class MobEntityManager {
 	}
 
 	private static void tickConfiguredMobFamilies() {
-		for (Mob parent : new ArrayList<>(TRACKED_MOBS.values())) {
+		List<Mob> parents = new ArrayList<>(TRACKED_MOBS.values());
+
+		for (Mob parent : parents) {
 			if (parent == null || !parent.isAlive() || !(parent.level() instanceof ServerLevel)) {
+				if (parent != null) {
+					DIRTY_HURT_PARENTS.remove(parent.getUUID());
+				}
 				continue;
 			}
 
-			if (isBabyVariantEntity(parent)) {
-				if (EntityGoalsManager.isGoalEnabledForRuntime(parent, MobConfigManager.FIELD_FOLLOW_PARENT)) {
-					followConfiguredParent(parent);
+			boolean baby = isBabyVariantEntity(parent);
+			if (baby) {
+				DIRTY_HURT_PARENTS.remove(parent.getUUID());
+				CachedFollowParentSettings followSettings = resolveFollowParentSettings(parent, baby);
+				if (followSettings.enabled()) {
+					followConfiguredParent(parent, followSettings.speed());
 				}
+				continue;
+			}
+			if (!DIRTY_HURT_PARENTS.remove(parent.getUUID())) {
 				continue;
 			}
 
@@ -1651,6 +1676,7 @@ public final class MobEntityManager {
 			if (attacker == null || !attacker.isAlive()) {
 				continue;
 			}
+
 			for (Mob child : TRACKED_MOBS.values()) {
 				if (child == null
 					|| child == parent
@@ -1668,7 +1694,30 @@ public final class MobEntityManager {
 		}
 	}
 
-	private static void followConfiguredParent(Mob baby) {
+	private static CachedFollowParentSettings resolveFollowParentSettings(Mob parent, boolean baby) {
+		FollowParentRuntimeKey runtimeKey = new FollowParentRuntimeKey(
+			parent.entityTags().hashCode(),
+			baby,
+			parent instanceof Creeper creeper && creeper.isPowered()
+		);
+		CachedFollowParentSettings cached = FOLLOW_PARENT_SETTINGS.get(parent.getUUID());
+		if (cached != null && cached.runtimeKey().equals(runtimeKey)) {
+			return cached;
+		}
+		JsonObject followParent = EntityGoalsManager.resolveConfiguredGoalForRuntime(
+			parent,
+			MobConfigManager.FIELD_FOLLOW_PARENT
+		);
+		CachedFollowParentSettings resolved = new CachedFollowParentSettings(
+			runtimeKey,
+			followParent != null && readBoolean(followParent, MobConfigManager.FIELD_ENABLED, false),
+			Math.max(0.05D, readDouble(followParent, MobConfigManager.FIELD_SPEED, 1.1D))
+		);
+		FOLLOW_PARENT_SETTINGS.put(parent.getUUID(), resolved);
+		return resolved;
+	}
+
+	private static void followConfiguredParent(Mob baby, double speed) {
 		UUID parentUuid = readParentUuid(baby);
 		if (parentUuid == null || !(baby.level() instanceof ServerLevel)) {
 			return;
@@ -1680,11 +1729,6 @@ public final class MobEntityManager {
 			return;
 		}
 		double distanceSqr = baby.distanceToSqr(parent);
-		JsonObject followParent = readObject(
-			readMobGoalsRoot(resolveConfiguredEntityVariantForRuntime(baby)),
-			MobConfigManager.FIELD_FOLLOW_PARENT
-		);
-		double speed = Math.max(0.05D, readDouble(followParent, MobConfigManager.FIELD_SPEED, 1.1D));
 		if (distanceSqr > 9.0D) {
 			baby.getNavigation().moveTo(parent, speed);
 		} else if (distanceSqr < 2.25D) {
@@ -1703,6 +1747,12 @@ public final class MobEntityManager {
 
 
 	private record PendingEntityReplacement(EntityType<?> replacementType, EntitySpawnReason reason) {}
+	private record FollowParentRuntimeKey(int entityTagHash, boolean baby, boolean powered) {}
+	private record CachedFollowParentSettings(
+		FollowParentRuntimeKey runtimeKey,
+		boolean enabled,
+		double speed
+	) {}
 	private record ActiveHealthReduction(LivingEntity target, long expiresAt) {}
 
 	private static LivingEntity resolveDamageSourceLivingAttacker(DamageSource source) {
