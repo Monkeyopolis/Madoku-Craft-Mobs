@@ -13,7 +13,7 @@ public abstract class PiglinCrossbowAttackMixin {
 	@Inject(method = "performRangedAttack", at = @At("HEAD"), cancellable = true)
 	private void madokuCraft$applyCustomCrossbowAttack(LivingEntity target, float pullProgress, CallbackInfo callbackInfo) {
 		Piglin piglin = (Piglin) (Object) this;
-		if (EntityBehaviorsManager.PiglinBehavior.applyRangedPiglinCrossbowAttack(piglin, target)) {
+		if (EntityBehaviorsManager.PiglinBehavior.applyRangedCrossbowAttack(piglin, target)) {
 			callbackInfo.cancel();
 		}
 	}

@@ -38,7 +38,6 @@ import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.CrossbowAttackMob;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Drowned;
@@ -2222,16 +2221,16 @@ public final class EntityBehaviorsManager {
 		}
 
 		public static boolean shouldAllowCrossbowAttack(Mob mob) {
-			if (!(mob instanceof Piglin piglin)) {
+			if (!(mob instanceof CrossbowAttackMob)) {
 				return true;
 			}
-			JsonObject fileRoot = resolveFileRoot(piglin);
+			JsonObject fileRoot = resolveFileRoot(mob);
 			if (fileRoot.entrySet().isEmpty()) {
 				return true;
 			}
 			boolean overrideBehaviors = readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_BEHAVIORS, true);
 			boolean overrideGoals = readBoolean(fileRoot, MobConfigManager.FIELD_OVERRIDE_GOALS, true);
-			JsonObject activeRoot = resolveRuntimeRoot(piglin);
+			JsonObject activeRoot = resolveRuntimeRoot(mob);
 			if (overrideBehaviors && !readBoolean(readObject(activeRoot, MobConfigManager.FIELD_MOB_BEHAVIORS), MobConfigManager.FIELD_CROSSBOW_ATTACK, false)) {
 				return false;
 			}
@@ -2244,18 +2243,18 @@ public final class EntityBehaviorsManager {
 			return true;
 		}
 
-		public static boolean applyRangedPiglinCrossbowAttack(Piglin piglin, LivingEntity target) {
-			if (piglin == null || target == null || !target.isAlive() || piglin.level().isClientSide()
-				|| !MobEntityManager.isEnabled() || !isCrossbowAttackEnabled(piglin)
-				|| !(piglin.level() instanceof ServerLevel level)) {
+		public static boolean applyRangedCrossbowAttack(Mob mob, LivingEntity target) {
+			if (!(mob instanceof CrossbowAttackMob) || target == null || !target.isAlive() || mob.level().isClientSide()
+				|| !MobEntityManager.isEnabled() || !isCrossbowAttackEnabled(mob)
+				|| !(mob.level() instanceof ServerLevel level)) {
 				return false;
 			}
 
-			InteractionHand hand = resolveCrossbowHand(piglin);
+			InteractionHand hand = resolveCrossbowHand(mob);
 			if (hand == null) {
 				return false;
 			}
-			ItemStack crossbow = piglin.getItemInHand(hand);
+			ItemStack crossbow = mob.getItemInHand(hand);
 			ChargedProjectiles charged = crossbow.get(DataComponents.CHARGED_PROJECTILES);
 			if (charged == null || charged.isEmpty()) {
 				return false;
@@ -2265,31 +2264,31 @@ public final class EntityBehaviorsManager {
 				return false;
 			}
 
-			AbstractArrow arrow = ProjectileUtil.getMobArrow(piglin, projectileStack, 1.0F, crossbow);
+			AbstractArrow arrow = ProjectileUtil.getMobArrow(mob, projectileStack, 1.0F, crossbow);
 			if (arrow == null) {
 				return false;
 			}
-			JsonObject activeRoot = resolveRuntimeRoot(piglin);
+			JsonObject activeRoot = resolveRuntimeRoot(mob);
 			JsonObject components = readObject(activeRoot, MobConfigManager.FIELD_MOB_COMPONENTS);
 			double accuracy = resolveScaledAttackAccuracy(
 				readDouble(components, MobConfigManager.FIELD_ATTACK_ACCURACY, DEFAULT_ATTACK_ACCURACY),
-				piglin
+				mob
 			);
 			accuracy = MobFeatureAPIManager.reduceHostileRangedAccuracy(target, accuracy);
-			accuracy = MobRegionalDifficultyManager.resolveMobAttackAccuracyScaling(piglin, accuracy);
+			accuracy = MobRegionalDifficultyManager.resolveMobAttackAccuracyScaling(mob, accuracy);
 			double baseDamage = readDouble(components, MobConfigManager.FIELD_RANGED_DAMAGE, DEFAULT_RANGED_DAMAGE);
-			double regionalDamage = MobRegionalDifficultyManager.resolveMobRangedDamageScaling(piglin, baseDamage);
+			double regionalDamage = MobRegionalDifficultyManager.resolveMobRangedDamageScaling(mob, baseDamage);
 			double rangedDamage = MobEntityManager.resolveWorldDifficultyValueForRuntime(
-				piglin,
+				mob,
 				MobConfigManager.FIELD_RANGED_DAMAGE,
 				Math.max(0.0D, regionalDamage)
 			);
 
-			ShotVector shot = resolveShotVector(piglin, arrow, target, accuracy);
+			ShotVector shot = resolveShotVector(mob, arrow, target, accuracy);
 			arrow.shoot(shot.vector.x, shot.vector.y, shot.vector.z, 1.6F, 0.0F);
 			arrow.setCritArrow(false);
 			arrow.setSoundEvent(SoundEvents.CROSSBOW_HIT);
-			EntityGoalsManager.applyProjectileFireSetting(piglin, arrow);
+			EntityGoalsManager.applyProjectileFireSetting(mob, arrow);
 			HelperProjectileAPIManager.setProjectileDamageOverride(arrow, (float) Math.max(0.0D, rangedDamage));
 			HelperProjectileAPIManager.trackManagedProjectile(arrow);
 			if (shot.guaranteedHit) {
@@ -2297,17 +2296,17 @@ public final class EntityBehaviorsManager {
 			}
 
 			crossbow.set(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
-			((CrossbowAttackMob) piglin).onCrossbowAttackPerformed();
-			piglin.playSound(SoundEvents.CROSSBOW_SHOOT, 1.0F, 1.0F / (piglin.getRandom().nextFloat() * 0.4F + 0.8F));
+			((CrossbowAttackMob) mob).onCrossbowAttackPerformed();
+			mob.playSound(SoundEvents.CROSSBOW_SHOOT, 1.0F, 1.0F / (mob.getRandom().nextFloat() * 0.4F + 0.8F));
 			level.addFreshEntity(arrow);
 			return true;
 		}
 
 		public static int resolveCrossbowChargeUpTicks(LivingEntity attacker, int fallback) {
-			if (!(attacker instanceof Piglin piglin) || !isCrossbowAttackEnabled(piglin)) {
+			if (!(attacker instanceof Mob mob) || !(mob instanceof CrossbowAttackMob) || !isCrossbowAttackEnabled(mob)) {
 				return fallback;
 			}
-			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			JsonObject components = readObject(resolveRuntimeRoot(mob), MobConfigManager.FIELD_MOB_COMPONENTS);
 			return Math.max(1, (int) Math.round(readDouble(
 				components,
 				MobConfigManager.FIELD_CHARGE_INTERVAL,
@@ -2315,91 +2314,91 @@ public final class EntityBehaviorsManager {
 			)));
 		}
 
-		public static int resolveCrossbowAttackIntervalTicks(Piglin piglin) {
-			if (!isCrossbowAttackEnabled(piglin)) {
+		public static int resolveCrossbowAttackIntervalTicks(Mob mob) {
+			if (!isCrossbowAttackEnabled(mob)) {
 				return -1;
 			}
-			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			JsonObject components = readObject(resolveRuntimeRoot(mob), MobConfigManager.FIELD_MOB_COMPONENTS);
 			return Math.max(1, (int) Math.round(readDouble(components, MobConfigManager.FIELD_ATTACK_INTERVAL, DEFAULT_ATTACK_INTERVAL_TICKS)));
 		}
 
 		public static boolean isCustomMobDropsEnabled(LivingEntity entity) {
-			if (!(entity instanceof Piglin piglin) || entity.level().isClientSide() || !MobEntityManager.isEnabled()) {
+			if (!(entity instanceof Mob mob) || entity.level().isClientSide() || !MobEntityManager.isEnabled()) {
 				return false;
 			}
-			JsonObject fileEntity = readObject(resolveFileRoot(piglin), MobConfigManager.FIELD_ENTITY);
+			JsonObject fileEntity = readObject(resolveFileRoot(mob), MobConfigManager.FIELD_ENTITY);
 			return !fileEntity.entrySet().isEmpty()
 				&& readBoolean(fileEntity, MobConfigManager.FIELD_CUSTOM_MOB_DROPS, true);
 		}
 
 		public static String resolveMobDropsConfigReference(LivingEntity entity) {
-			if (!(entity instanceof Piglin piglin) || !MobEntityManager.isEnabled()) {
+			if (!(entity instanceof Mob mob) || !MobEntityManager.isEnabled()) {
 				return "";
 			}
-			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			JsonObject components = readObject(resolveRuntimeRoot(mob), MobConfigManager.FIELD_MOB_COMPONENTS);
 			return readString(components, MobConfigManager.FIELD_MOB_DROPS, "");
 		}
 
-		private static boolean isCrossbowAttackEnabled(Piglin piglin) {
-			return piglin != null && !resolveRuntimeRoot(piglin).entrySet().isEmpty()
+		private static boolean isCrossbowAttackEnabled(Mob mob) {
+			return mob != null && mob instanceof CrossbowAttackMob && !resolveRuntimeRoot(mob).entrySet().isEmpty()
 				&& readBoolean(
-					readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_BEHAVIORS),
+					readObject(resolveRuntimeRoot(mob), MobConfigManager.FIELD_MOB_BEHAVIORS),
 					MobConfigManager.FIELD_CROSSBOW_ATTACK,
 					false
 				);
 		}
 
-		public static boolean isCrossbowAttackEnabledForIndicator(Piglin piglin) {
-			return isCrossbowAttackEnabled(piglin);
+		public static boolean isCrossbowAttackEnabledForIndicator(Mob mob) {
+			return isCrossbowAttackEnabled(mob);
 		}
 
-		public static double resolveRangedDamageForIndicator(Piglin piglin) {
-			if (!isCrossbowAttackEnabled(piglin)) {
+		public static double resolveRangedDamageForIndicator(Mob mob) {
+			if (!isCrossbowAttackEnabled(mob)) {
 				return 0.0D;
 			}
-			JsonObject components = readObject(resolveRuntimeRoot(piglin), MobConfigManager.FIELD_MOB_COMPONENTS);
+			JsonObject components = readObject(resolveRuntimeRoot(mob), MobConfigManager.FIELD_MOB_COMPONENTS);
 			double baseDamage = readDouble(components, MobConfigManager.FIELD_RANGED_DAMAGE, DEFAULT_RANGED_DAMAGE);
-			double regionalDamage = MobRegionalDifficultyManager.resolveMobRangedDamageScaling(piglin, baseDamage);
+			double regionalDamage = MobRegionalDifficultyManager.resolveMobRangedDamageScaling(mob, baseDamage);
 			return Math.max(0.0D, MobEntityManager.resolveWorldDifficultyValueForRuntime(
-				piglin,
+				mob,
 				MobConfigManager.FIELD_RANGED_DAMAGE,
 				Math.max(0.0D, regionalDamage)
 			));
 		}
 
-		private static JsonObject resolveFileRoot(Piglin piglin) {
-			if (piglin == null || !MobEntityManager.isEnabled()
-				|| !MobConfigManager.FILE_PIGLIN.equals(MobEntityManager.resolveRuntimeMobFileKey(piglin))
-				|| !MobEntityManager.isMobFileEnabledForRuntime(MobConfigManager.FILE_PIGLIN)) {
+		private static JsonObject resolveFileRoot(Mob mob) {
+			String fileKey = mob == null ? "" : MobEntityManager.resolveRuntimeMobFileKey(mob);
+			if (fileKey.isBlank() || !MobEntityManager.isEnabled()
+				|| !MobEntityManager.isMobFileEnabledForRuntime(fileKey)) {
 				return new JsonObject();
 			}
-			return MobEntityManager.resolveMobFileConfigRootForRuntime(MobConfigManager.FILE_PIGLIN);
+			return MobEntityManager.resolveMobFileConfigRootForRuntime(fileKey);
 		}
 
-		private static JsonObject resolveRuntimeRoot(Piglin piglin) {
-			if (piglin == null || !MobEntityManager.isEnabled()
-				|| !MobConfigManager.FILE_PIGLIN.equals(MobEntityManager.resolveRuntimeMobFileKey(piglin))) {
+		private static JsonObject resolveRuntimeRoot(Mob mob) {
+			if (mob == null || !MobEntityManager.isEnabled()
+				|| MobEntityManager.resolveRuntimeMobFileKey(mob).isBlank()) {
 				return new JsonObject();
 			}
-			return MobEntityManager.resolveConfiguredEntityVariantForRuntime(piglin);
+			return MobEntityManager.resolveConfiguredEntityVariantForRuntime(mob);
 		}
 
-		private static InteractionHand resolveCrossbowHand(Piglin piglin) {
-			if (piglin == null) {
+		private static InteractionHand resolveCrossbowHand(Mob mob) {
+			if (mob == null) {
 				return null;
 			}
-			if (piglin.getMainHandItem().is(Items.CROSSBOW)) {
+			if (mob.getMainHandItem().is(Items.CROSSBOW)) {
 				return InteractionHand.MAIN_HAND;
 			}
-			if (piglin.getOffhandItem().is(Items.CROSSBOW)) {
+			if (mob.getOffhandItem().is(Items.CROSSBOW)) {
 				return InteractionHand.OFF_HAND;
 			}
 			return null;
 		}
 
-		private static double resolveScaledAttackAccuracy(double base, Piglin piglin) {
-			boolean hardcore = piglin.level().getServer() != null && piglin.level().getServer().isHardcore();
-			int tier = switch (piglin.level().getDifficulty()) {
+		private static double resolveScaledAttackAccuracy(double base, Mob mob) {
+			boolean hardcore = mob.level().getServer() != null && mob.level().getServer().isHardcore();
+			int tier = switch (mob.level().getDifficulty()) {
 				case PEACEFUL -> -2;
 				case EASY -> -1;
 				case NORMAL -> 0;
@@ -2408,9 +2407,9 @@ public final class EntityBehaviorsManager {
 			return Mth.clamp(base + (0.05D * tier), 0.0D, 1.0D);
 		}
 
-		private static ShotVector resolveShotVector(Piglin piglin, AbstractArrow arrow, LivingEntity target, double accuracy) {
-			double dx = target.getX() - piglin.getX();
-			double dz = target.getZ() - piglin.getZ();
+		private static ShotVector resolveShotVector(Mob mob, AbstractArrow arrow, LivingEntity target, double accuracy) {
+			double dx = target.getX() - mob.getX();
+			double dz = target.getZ() - mob.getZ();
 			double horizontal = Math.sqrt(dx * dx + dz * dz);
 			double dy = target.getY(1.0D / 3.0D) - arrow.getY() + (horizontal * 0.2D);
 			Vec3 desired = new Vec3(dx, dy, dz);
@@ -2418,7 +2417,7 @@ public final class EntityBehaviorsManager {
 				return new ShotVector(desired, true);
 			}
 			double clampedAccuracy = Mth.clamp(accuracy, 0.0D, 1.0D);
-			if (piglin.getRandom().nextDouble() <= clampedAccuracy) {
+			if (mob.getRandom().nextDouble() <= clampedAccuracy) {
 				return new ShotVector(desired, true);
 			}
 			Vec3 normalized = desired.normalize();
@@ -2430,8 +2429,8 @@ public final class EntityBehaviorsManager {
 			double missFactor = 1.0D - clampedAccuracy;
 			double lateralStrength = Mth.lerp(missFactor, 1.4D, 2.4D);
 			double verticalStrength = Mth.lerp(missFactor, 0.25D, 0.9D)
-				* (piglin.getRandom().nextBoolean() ? -1.0D : 1.0D);
-			Vec3 miss = lateral.scale((piglin.getRandom().nextBoolean() ? -1.0D : 1.0D) * lateralStrength)
+				* (mob.getRandom().nextBoolean() ? -1.0D : 1.0D);
+			Vec3 miss = lateral.scale((mob.getRandom().nextBoolean() ? -1.0D : 1.0D) * lateralStrength)
 				.add(0.0D, verticalStrength, 0.0D)
 				.add(normalized.scale(-0.35D));
 			return new ShotVector(miss.lengthSqr() <= 1.0E-6D ? lateral : miss.normalize(), false);

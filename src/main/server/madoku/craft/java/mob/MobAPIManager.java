@@ -28,6 +28,8 @@ public final class MobAPIManager {
 	public static String resolveZombieMobDropsConfigReference(LivingEntity entity) { return provider.resolveZombieMobDropsConfigReference(entity); }
 	public static boolean isPiglinCustomMobDropsEnabled(LivingEntity entity) { return provider.isPiglinCustomMobDropsEnabled(entity); }
 	public static String resolvePiglinMobDropsConfigReference(LivingEntity entity) { return provider.resolvePiglinMobDropsConfigReference(entity); }
+	public static boolean isPillagerCustomMobDropsEnabled(LivingEntity entity) { return provider.isPillagerCustomMobDropsEnabled(entity); }
+	public static String resolvePillagerMobDropsConfigReference(LivingEntity entity) { return provider.resolvePillagerMobDropsConfigReference(entity); }
 	public static boolean shouldSkeletonMeleeIgnoreArmor(DamageSource source) { return provider.shouldSkeletonMeleeIgnoreArmor(source); }
 	public static boolean shouldBypassArmorForMobDamage(DamageSource source) { return provider.shouldBypassArmorForMobDamage(source); }
 	public static void broadcastDifficultyIfChanged(MinecraftServer server) { provider.broadcastDifficultyIfChanged(server); }

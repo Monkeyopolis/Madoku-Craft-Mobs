@@ -17,6 +17,8 @@ public interface MobProvider {
 	default String resolveZombieMobDropsConfigReference(LivingEntity entity) { return ""; }
 	default boolean isPiglinCustomMobDropsEnabled(LivingEntity entity) { return false; }
 	default String resolvePiglinMobDropsConfigReference(LivingEntity entity) { return ""; }
+	default boolean isPillagerCustomMobDropsEnabled(LivingEntity entity) { return false; }
+	default String resolvePillagerMobDropsConfigReference(LivingEntity entity) { return ""; }
 	default boolean shouldSkeletonMeleeIgnoreArmor(DamageSource source) { return false; }
 	default boolean shouldBypassArmorForMobDamage(DamageSource source) { return false; }
 	default void broadcastDifficultyIfChanged(MinecraftServer server) { }

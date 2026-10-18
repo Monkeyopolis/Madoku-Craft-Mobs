@@ -82,6 +82,7 @@ public final class MobConfigManager {
 	public static final String FILE_HAG = "hag";
 	public static final String FILE_BEE = "bee";
 	public static final String FILE_PIGLIN = "piglin";
+	public static final String FILE_PILLAGER = "pillager";
 	public static final String FILE_ENDERMAN = "enderman";
 
 	public static final String FIELD_CAN_PICK_UP_LOOT = "can-pick-up-loot";
@@ -370,7 +371,7 @@ public final class MobConfigManager {
 		Map<String, JsonObject> defaults = new LinkedHashMap<>();
 		for (String key : List.of(FILE_BEE, FILE_BOGGED, FILE_CAVE_SPIDER, FILE_CREEPER, FILE_DROWNED,
 			FILE_HAG, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_SPIDER, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_ENDERMAN)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_PILLAGER, FILE_ENDERMAN)) {
 			defaults.put(key, buildNewDynamicEntityDefaults(key));
 		}
 		return defaults;
@@ -384,7 +385,7 @@ public final class MobConfigManager {
 		mobId = JSONAPIManager.normalizeRegistryIdentifierForJson(mobId);
 		JsonObject entityVariant = buildEntityVariantDefaults(key);
 		if (List.of(FILE_BOGGED, FILE_DROWNED, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN).contains(key)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_PILLAGER).contains(key)) {
 			entityVariant.getAsJsonObject(FIELD_MOB_COMPONENTS).addProperty(FIELD_WEAPON_DAMAGE, false);
 		}
 		JsonObject entityRoot = new JsonObject();
@@ -560,6 +561,7 @@ public final class MobConfigManager {
 			case FILE_HUSK -> buildHuskVariantDefaults();
 			case FILE_PARCHED -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:slowness", "minecraft-equipment-parched.json", "minecraft-entities-parched.json", "parched-jockey");
 			case FILE_PIGLIN -> buildPiglinVariantDefaults();
+			case FILE_PILLAGER -> buildPillagerVariantDefaults();
 			case FILE_SKELETON -> buildSkeletonVariantDefaults();
 			case FILE_SPIDER -> buildSpiderVariantDefaults();
 			case FILE_STRAY -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:weakness", "minecraft-equipment-stray.json", "minecraft-entities-stray.json", "stray-jockey");
@@ -759,6 +761,15 @@ public final class MobConfigManager {
 		));
 		addPiglinAgeVariants(variant.getAsJsonObject("crossbow-piglin"), true);
 		return variant;
+	}
+
+	private static JsonObject buildPillagerVariantDefaults() {
+		return buildVariant(
+			buildComponents(20.0D, 1.0D, null, 0.27D, null, null, 0.1D, 1.0D, 11, 6.0D, 0.7D, 20.0D, 10.0D,
+				"minecraft-entities-pillager.json", "minecraft:crossbow", null, 0, null, null, null),
+			buildSpawnRules(100.0D), buildCrossbowBehavior(),
+			buildGoals("hurt-by-target", "target-player", "ranged-attack")
+		);
 	}
 
 	private static void addPiglinAgeVariants(JsonObject variant) {

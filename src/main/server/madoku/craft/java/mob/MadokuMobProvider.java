@@ -17,6 +17,8 @@ public final class MadokuMobProvider implements MobProvider {
 	@Override public String resolveZombieMobDropsConfigReference(LivingEntity entity) { return MobEntityManager.resolveZombieMobDropsConfigReference(entity); }
 	@Override public boolean isPiglinCustomMobDropsEnabled(LivingEntity entity) { return MobEntityManager.isPiglinCustomMobDropsEnabled(entity); }
 	@Override public String resolvePiglinMobDropsConfigReference(LivingEntity entity) { return MobEntityManager.resolvePiglinMobDropsConfigReference(entity); }
+	@Override public boolean isPillagerCustomMobDropsEnabled(LivingEntity entity) { return MobEntityManager.isPillagerCustomMobDropsEnabled(entity); }
+	@Override public String resolvePillagerMobDropsConfigReference(LivingEntity entity) { return MobEntityManager.resolvePillagerMobDropsConfigReference(entity); }
 	@Override public boolean shouldSkeletonMeleeIgnoreArmor(DamageSource source) { return MobEntityManager.shouldSkeletonMeleeIgnoreArmor(source); }
 	@Override public boolean shouldBypassArmorForMobDamage(DamageSource source) { return MobEntityManager.shouldBypassArmorForMobDamage(source); }
 	@Override public void broadcastDifficultyIfChanged(MinecraftServer server) { MadokuMobManager.broadcastDifficultyIfChanged(server); }

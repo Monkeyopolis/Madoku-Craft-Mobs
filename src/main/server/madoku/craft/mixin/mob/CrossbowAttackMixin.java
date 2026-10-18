@@ -5,7 +5,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.behavior.CrossbowAttack;
-import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import org.objectweb.asm.Opcodes;
@@ -57,9 +56,7 @@ public abstract class CrossbowAttackMixin {
 	)
 	private void madokuCraft$applyConfiguredAttackInterval(Mob mob, LivingEntity target, CallbackInfo callbackInfo) {
 		if (mob != null) {
-			int interval = mob instanceof Piglin piglin
-				? EntityBehaviorsManager.PiglinBehavior.resolveCrossbowAttackIntervalTicks(piglin)
-				: -1;
+			int interval = EntityBehaviorsManager.PiglinBehavior.resolveCrossbowAttackIntervalTicks(mob);
 			if (interval > 0) {
 				((CrossbowAttackAccessor) (Object) this).madokuCraft$setAttackDelay(interval);
 			}

@@ -36,6 +36,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.illager.Pillager;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
@@ -914,8 +915,9 @@ public final class MobEntityManager {
 		if (mob instanceof Drowned drowned && EntityBehaviorsManager.DrownedBehavior.isRangedDrownedVariant(drowned)) {
 			return EntityBehaviorsManager.DrownedBehavior.resolveRangedDamageForIndicator(drowned);
 		}
-		if (mob instanceof Piglin piglin && EntityBehaviorsManager.PiglinBehavior.isCrossbowAttackEnabledForIndicator(piglin)) {
-			return EntityBehaviorsManager.PiglinBehavior.resolveRangedDamageForIndicator(piglin);
+		if ((mob instanceof Piglin || mob instanceof Pillager)
+			&& EntityBehaviorsManager.PiglinBehavior.isCrossbowAttackEnabledForIndicator(mob)) {
+			return EntityBehaviorsManager.PiglinBehavior.resolveRangedDamageForIndicator(mob);
 		}
 		return -1.0D;
 	}
@@ -1297,6 +1299,14 @@ public final class MobEntityManager {
 	}
 
 	public static String resolvePiglinMobDropsConfigReference(LivingEntity entity) {
+		return EntityBehaviorsManager.PiglinBehavior.resolveMobDropsConfigReference(entity);
+	}
+
+	public static boolean isPillagerCustomMobDropsEnabled(LivingEntity entity) {
+		return EntityBehaviorsManager.PiglinBehavior.isCustomMobDropsEnabled(entity);
+	}
+
+	public static String resolvePillagerMobDropsConfigReference(LivingEntity entity) {
 		return EntityBehaviorsManager.PiglinBehavior.resolveMobDropsConfigReference(entity);
 	}
 
@@ -1789,7 +1799,9 @@ public final class MobEntityManager {
 		if (attacker.getType() == MobEntityTypeAPIManager.BEE) {
 			return resolveBeeRootForRuntime(attacker);
 		}
-		if (attacker instanceof Piglin && isMobFileEnabled(MobConfigManager.FILE_PIGLIN)) {
+		String configuredFileKey = resolveRuntimeMobFileKey(attacker);
+		if ((attacker instanceof Piglin || attacker instanceof Pillager)
+			&& !configuredFileKey.isBlank() && isMobFileEnabled(configuredFileKey)) {
 			return resolveConfiguredEntityVariantForRuntime(attacker);
 		}
 		if (attacker instanceof ZombieVillager zombieVillager) {
