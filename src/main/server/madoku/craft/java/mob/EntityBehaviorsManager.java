@@ -10,12 +10,11 @@ import java.util.UUID;
 
 import madoku.craft.java.core.helper.HelperProjectileAPIManager;
 import madoku.craft.java.core.chunk.ChunkAPIManager;
+import madoku.craft.java.core.status.EntityStunManager;
 import madoku.craft.mixin.mob.AbstractSkeletonArrowInvoker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.EntityReference;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.sounds.SoundEvents;
@@ -23,7 +22,6 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
-import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.animal.bee.Bee;
@@ -101,11 +99,7 @@ public final class EntityBehaviorsManager {
 			if (bee == null || target == null || effect == null || attacker == null) {
 				return false;
 			}
-			if (!MobEntityManager.isEnabled() || !MobEntityManager.isMobFileEnabledForRuntime(MobConfigManager.FILE_BEE)) {
-				return target.addEffect(effect, attacker);
-			}
-			MobEffectInstance configuredEffect = MobEntityManager.resolveBeeAttackEffect(bee, effect);
-			return target.addEffect(configuredEffect, attacker);
+			return MobEntityManager.applyConfiguredMobAttackEffect(target, bee, effect);
 		}
 
 		public static boolean isPollinateCropsEnabled(Bee bee) {
@@ -915,6 +909,9 @@ public final class EntityBehaviorsManager {
 			if (!isBowAttackEnabled(skeleton)) {
 				return false;
 			}
+			if (EntityStunManager.isStunned(skeleton)) {
+				return true;
+			}
 
 			UUID skeletonId = skeleton.getUUID();
 			int cooldown = RANGED_BOW_COOLDOWNS.getOrDefault(skeletonId, 0);
@@ -958,6 +955,9 @@ public final class EntityBehaviorsManager {
 			}
 			if (!isBowAttackEnabled(skeleton)) {
 				clearRangedSkeletonRuntimeState(skeleton);
+				return;
+			}
+			if (EntityStunManager.isStunned(skeleton)) {
 				return;
 			}
 
@@ -2627,11 +2627,7 @@ public final class EntityBehaviorsManager {
 			if (husk == null || target == null || effect == null || attacker == null) {
 				return false;
 			}
-			if (!MobEntityManager.isEnabled() || !MobEntityManager.isMobFileEnabledForRuntime(MobConfigManager.FILE_HUSK)) {
-				return target.addEffect(effect, attacker);
-			}
-			MobEffectInstance configuredEffect = MobEntityManager.resolveHuskAttackEffect(husk, effect);
-			return target.addEffect(configuredEffect, attacker);
+			return MobEntityManager.applyConfiguredMobAttackEffect(target, husk, effect);
 		}
 
 		private static void stripHeldAttackDamageModifiers(Husk husk, EquipmentSlot slot) {
@@ -3660,15 +3656,15 @@ public final class EntityBehaviorsManager {
 			return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
 		}
 
-		private static JsonObject readMobComponentsRoot(JsonObject root) {
-			return readObject(root, MobConfigManager.FIELD_MOB_COMPONENTS);
-		}
-
 		private static JsonObject readObject(JsonObject parent, String key) {
 			if (parent == null || key == null || key.isBlank()) {
 				return new JsonObject();
 			}
 			return parent.has(key) && parent.get(key).isJsonObject() ? parent.getAsJsonObject(key) : new JsonObject();
+		}
+
+		private static JsonObject readMobComponentsRoot(JsonObject root) {
+			return readObject(root, MobConfigManager.FIELD_MOB_COMPONENTS);
 		}
 
 		private static double readDouble(JsonObject root, String key, double fallback) {
@@ -4196,6 +4192,12 @@ public final class EntityBehaviorsManager {
 		private static final Map<UUID, Integer> RANGED_BOW_COOLDOWNS = new ConcurrentHashMap<>();
 
 		private StrayBehavior() {
+		}
+
+		public static boolean isFrostedStray(AbstractSkeleton skeleton) {
+			return skeleton != null
+				&& skeleton.getType() == MobEntityTypeAPIManager.STRAY
+				&& "frosted-stray".equals(readStoredVariantKey(skeleton));
 		}
 
 		public static void applySpawnOverrides(
@@ -4759,7 +4761,7 @@ public final class EntityBehaviorsManager {
 	}
 
 	public static final class WitherSkeletonBehavior {
-		private static final int DEFAULT_WITHER_EFFECT_DURATION_TICKS = 5 * 20;
+		private static final int DEFAULT_WITHER_EFFECT_DURATION_TICKS = 10 * 20;
 
 		private WitherSkeletonBehavior() {
 		}
@@ -4919,30 +4921,18 @@ public final class EntityBehaviorsManager {
 		}
 
 		public static boolean applyWitherSkeletonHitEffect(LivingEntity target, Entity attacker) {
-			if (target == null || attacker == null || target.level().isClientSide() || !MobEntityManager.isEnabled()) {
+			if (target == null || attacker == null || target.level().isClientSide()) {
 				return false;
 			}
 			if (!(attacker instanceof AbstractSkeleton skeleton) || skeleton.getType() != MobEntityTypeAPIManager.WITHER_SKELETON) {
 				return false;
 			}
-			JsonObject root = resolveRuntimeRoot(skeleton);
-			if (root.entrySet().isEmpty()) {
-				return target.addEffect(new MobEffectInstance(MobEffects.WITHER, DEFAULT_WITHER_EFFECT_DURATION_TICKS), attacker);
-			}
-			MobEffectInstance effect = resolveConfiguredMobEffectInstance(readMobComponentsRoot(root), new MobEffectInstance(MobEffects.WITHER, DEFAULT_WITHER_EFFECT_DURATION_TICKS));
-			return effect != null && target.addEffect(effect, attacker);
+			return MobEntityManager.applyConfiguredMobAttackEffect(
+				target,
+				skeleton,
+				new MobEffectInstance(MobEffects.WITHER, DEFAULT_WITHER_EFFECT_DURATION_TICKS)
+			);
 		}
-		private static JsonObject readMobComponentsRoot(JsonObject root) {
-			return readObject(root, MobConfigManager.FIELD_MOB_COMPONENTS);
-		}
-
-		private static JsonObject readObject(JsonObject parent, String key) {
-			if (parent == null || key == null || key.isBlank()) {
-				return new JsonObject();
-			}
-			return parent.has(key) && parent.get(key).isJsonObject() ? parent.getAsJsonObject(key) : new JsonObject();
-		}
-
 		private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
 			if (root == null || key == null || key.isBlank()) {
 				return fallback;
@@ -4951,60 +4941,6 @@ public final class EntityBehaviorsManager {
 				return fallback;
 			}
 			return root.get(key).getAsBoolean();
-		}
-
-		private static String readString(JsonObject root, String key, String fallback) {
-			if (root == null || key == null || key.isBlank()) {
-				return fallback;
-			}
-			if (!root.has(key) || !root.get(key).isJsonPrimitive() || !root.get(key).getAsJsonPrimitive().isString()) {
-				return fallback;
-			}
-			try {
-				String value = root.get(key).getAsString();
-				return value == null ? fallback : value;
-			} catch (RuntimeException ignored) {
-				return fallback;
-			}
-		}
-
-		private static double readDouble(JsonObject root, String key, double fallback) {
-			if (root == null) {
-				return fallback;
-			}
-			if (!root.has(key) || !root.get(key).isJsonPrimitive() || !root.get(key).getAsJsonPrimitive().isNumber()) {
-				return fallback;
-			}
-			try {
-				double value = root.get(key).getAsDouble();
-				return Double.isFinite(value) ? value : fallback;
-			} catch (RuntimeException ignored) {
-				return fallback;
-			}
-		}
-
-		private static MobEffectInstance resolveConfiguredMobEffectInstance(JsonObject componentsRoot, MobEffectInstance fallbackEffect) {
-			if (componentsRoot == null || componentsRoot.entrySet().isEmpty() || fallbackEffect == null) {
-				return fallbackEffect;
-			}
-			JsonObject mobEffectRoot = readObject(componentsRoot, MobConfigManager.FIELD_MOB_EFFECT);
-			if (mobEffectRoot.entrySet().isEmpty()) {
-				return fallbackEffect;
-			}
-			String effectId = normalizeKey(readString(mobEffectRoot, MobConfigManager.FIELD_EFFECT, ""));
-			if (effectId.isBlank()) {
-				return fallbackEffect;
-			}
-			Identifier effectIdentifier = Identifier.tryParse(effectId);
-			if (effectIdentifier == null || !BuiltInRegistries.MOB_EFFECT.containsKey(effectIdentifier)) {
-				return fallbackEffect;
-			}
-			MobEffect mobEffect = BuiltInRegistries.MOB_EFFECT.getValue(effectIdentifier);
-			if (mobEffect == null) {
-				return fallbackEffect;
-			}
-			int durationSeconds = Math.max(1, (int) Math.round(readDouble(mobEffectRoot, MobConfigManager.FIELD_DURATION, 0.0D)));
-			return new MobEffectInstance(BuiltInRegistries.MOB_EFFECT.wrapAsHolder(mobEffect), durationSeconds * 20);
 		}
 
 		private static JsonObject mergeWitherSkeletonFileSettings(JsonObject fileRoot, JsonObject variantRoot) {

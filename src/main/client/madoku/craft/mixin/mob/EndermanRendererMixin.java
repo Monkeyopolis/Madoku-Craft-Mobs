@@ -5,6 +5,7 @@ import java.util.List;
 import madoku.craft.java.mob.EndermanVariantEyesLayer;
 import madoku.craft.java.mob.LivingEntityRendererLayersAccess;
 import madoku.craft.java.mob.MobAppearanceRenderManager;
+import madoku.craft.java.mob.MobRendererLayerManager;
 import madoku.craft.java.mob.MobVariantRenderStateAccess;
 import net.minecraft.client.model.monster.enderman.EndermanModel;
 import net.minecraft.client.renderer.entity.EndermanRenderer;
@@ -34,11 +35,7 @@ public abstract class EndermanRendererMixin {
 		List<RenderLayer<EndermanRenderState, EndermanModel<EndermanRenderState>>> layers =
 			(List<RenderLayer<EndermanRenderState, EndermanModel<EndermanRenderState>>>) (List<?>)
 				((LivingEntityRendererLayersAccess) (Object) this).madokuCraft$getLayers();
-		for (int index = 0; index < layers.size(); index++) {
-			if (layers.get(index) instanceof EnderEyesLayer) {
-				layers.set(index, new EndermanVariantEyesLayer(parent));
-			}
-		}
+		MobRendererLayerManager.replaceFirst(layers, EnderEyesLayer.class, new EndermanVariantEyesLayer(parent));
 	}
 
 	@Inject(

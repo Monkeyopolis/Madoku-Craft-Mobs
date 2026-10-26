@@ -4,6 +4,7 @@ import java.util.List;
 
 import madoku.craft.java.mob.LivingEntityRendererLayersAccess;
 import madoku.craft.java.mob.MobAppearanceRenderManager;
+import madoku.craft.java.mob.MobRendererLayerManager;
 import madoku.craft.java.mob.SpiderVariantEyesLayer;
 import madoku.craft.java.mob.MobVariantRenderStateAccess;
 import net.minecraft.client.model.geom.ModelLayerLocation;
@@ -39,11 +40,7 @@ public abstract class SpiderRendererMixin {
 		List<RenderLayer<LivingEntityRenderState, SpiderModel>> layers =
 			(List<RenderLayer<LivingEntityRenderState, SpiderModel>>) (List<?>)
 				((LivingEntityRendererLayersAccess) (Object) this).madokuCraft$getLayers();
-		for (int index = 0; index < layers.size(); index++) {
-			if (layers.get(index) instanceof SpiderEyesLayer<?>) {
-				layers.set(index, new SpiderVariantEyesLayer(parent));
-			}
-		}
+		MobRendererLayerManager.replaceFirst(layers, SpiderEyesLayer.class, new SpiderVariantEyesLayer(parent));
 	}
 
 	@Inject(method = "getTextureLocation", at = @At("RETURN"), cancellable = true)

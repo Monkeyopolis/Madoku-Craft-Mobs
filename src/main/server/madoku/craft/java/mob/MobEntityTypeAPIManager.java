@@ -16,6 +16,7 @@ public final class MobEntityTypeAPIManager {
 	public static final EntityType<?> HUSK = resolve("minecraft:husk");
 	public static final EntityType<?> PARCHED = resolve("minecraft:parched");
 	public static final EntityType<?> PIGLIN = resolve("minecraft:piglin");
+	public static final EntityType<?> ZOMBIFIED_PIGLIN = resolve("minecraft:zombified_piglin");
 	public static final EntityType<?> PILLAGER = resolve("minecraft:pillager");
 	public static final EntityType<?> SKELETON = resolve("minecraft:skeleton");
 	public static final EntityType<?> SPIDER = resolve("minecraft:spider");

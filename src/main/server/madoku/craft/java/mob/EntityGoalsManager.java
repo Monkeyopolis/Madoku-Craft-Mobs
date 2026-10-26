@@ -26,6 +26,8 @@ public final class EntityGoalsManager {
 		Collections.synchronizedMap(new WeakHashMap<>());
 	private static final Map<Goal, CachedGoalSettings> GOAL_SETTINGS_CACHE =
 		Collections.synchronizedMap(new WeakHashMap<>());
+	private static final Map<LivingEntity, CachedPlayerTargetGoal> PLAYER_TARGET_GOAL_CACHE =
+		Collections.synchronizedMap(new WeakHashMap<>());
 
 	private EntityGoalsManager() {
 	}
@@ -63,7 +65,7 @@ public final class EntityGoalsManager {
 	}
 
 	public static Boolean resolvePlayerTargetGoal(LivingEntity entity) {
-		JsonObject targetPlayer = resolveConfiguredGoalForRuntime(entity, MobConfigManager.FIELD_TARGET_PLAYER);
+		JsonObject targetPlayer = resolvePlayerTargetDefinitionForRuntime(entity);
 		return targetPlayer == null ? null : readBoolean(targetPlayer, MobConfigManager.FIELD_ENABLED, false);
 	}
 
@@ -89,19 +91,19 @@ public final class EntityGoalsManager {
 	}
 
 	public static boolean arePlayerTargetConditionsSatisfied(LivingEntity entity, LivingEntity target) {
-		if (!Boolean.TRUE.equals(resolvePlayerTargetGoal(entity))) {
-			return false;
-		}
-		JsonObject targetPlayer = resolveConfiguredGoalForRuntime(entity, MobConfigManager.FIELD_TARGET_PLAYER);
-		return EntityConditionsManager.areSatisfied(entity, targetPlayer, target);
+		JsonObject targetPlayer = resolvePlayerTargetDefinitionForRuntime(entity);
+		return readBoolean(targetPlayer, MobConfigManager.FIELD_ENABLED, false)
+			&& EntityConditionsManager.areSatisfied(entity, targetPlayer, target);
 	}
 
 	public static boolean shouldIgnorePlayerTarget(Mob attacker, LivingEntity target) {
 		if (!(target instanceof Player)) {
 			return false;
 		}
-		Boolean configured = resolvePlayerTargetGoal(attacker);
-		return configured != null && (!configured || !arePlayerTargetConditionsSatisfied(attacker, target));
+		JsonObject targetPlayer = resolvePlayerTargetDefinitionForRuntime(attacker);
+		return targetPlayer != null
+			&& (!readBoolean(targetPlayer, MobConfigManager.FIELD_ENABLED, false)
+				|| !EntityConditionsManager.areSatisfied(attacker, targetPlayer, target));
 	}
 
 	public static boolean shouldAllowCanUse(Mob mob, Goal goal) {
@@ -142,12 +144,29 @@ public final class EntityGoalsManager {
 	static void onEntityCleanup(LivingEntity entity) {
 		if (entity != null) {
 			GOAL_COOLDOWNS.keySet().removeIf(key -> key.entityId().equals(entity.getUUID()));
+			PLAYER_TARGET_GOAL_CACHE.remove(entity);
 		}
 	}
 
 	static void clearRuntimeCache() {
 		GOAL_OWNER_CACHE.clear();
 		GOAL_SETTINGS_CACHE.clear();
+		PLAYER_TARGET_GOAL_CACHE.clear();
+	}
+
+	private static JsonObject resolvePlayerTargetDefinitionForRuntime(LivingEntity entity) {
+		if (entity == null || !MobConfigManager.isEnabled()) {
+			return null;
+		}
+		long gameTime = entity.level().getGameTime();
+		CachedPlayerTargetGoal cached = PLAYER_TARGET_GOAL_CACHE.get(entity);
+		if (cached != null && cached.gameTime() == gameTime) {
+			return cached.definition();
+		}
+
+		JsonObject definition = resolveConfiguredGoalForRuntime(entity, MobConfigManager.FIELD_TARGET_PLAYER);
+		PLAYER_TARGET_GOAL_CACHE.put(entity, new CachedPlayerTargetGoal(gameTime, definition));
+		return definition;
 	}
 
 	public static Mob resolveOwningMob(Goal goal) {
@@ -297,6 +316,9 @@ public final class EntityGoalsManager {
 	}
 
 	private record CachedGoalSettings(WeakReference<Mob> owner, RuntimeGoalState state, GoalSettings settings) {
+	}
+
+	private record CachedPlayerTargetGoal(long gameTime, JsonObject definition) {
 	}
 
 	private record RuntimeGoalState(int entityTagsHash, boolean baby, boolean powered) {

@@ -6,9 +6,11 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Items;
 
 import java.util.List;
 
@@ -70,8 +72,88 @@ public final class EntityConditionsManager {
 			case MobConfigManager.CONDITION_EYES_LOOKED_AT -> {
 				yield hasEyesLookedAtPlayer(entity, target);
 			}
+			case MobConfigManager.CONDITION_WEARING_ARMOR -> {
+				yield hasPlayerWearingArmorMaterial(
+					entity,
+					target,
+					readString(condition, MobConfigManager.FIELD_MATERIAL, "")
+				);
+			}
+			case MobConfigManager.CONDITION_WEARING_IRON -> {
+				yield hasPlayerWearingArmorMaterial(entity, target, "iron");
+			}
+			case MobConfigManager.CONDITION_WEARING_GOLD -> {
+				yield hasPlayerWearingArmorMaterial(entity, target, "gold");
+			}
+			case MobConfigManager.CONDITION_NOT_WEARING_ARMOR -> {
+				yield isPlayerNotWearingArmorMaterial(
+					entity,
+					target,
+					readString(condition, MobConfigManager.FIELD_MATERIAL, "")
+				);
+			}
+			case MobConfigManager.CONDITION_NOT_WEARING_IRON -> {
+				yield isPlayerNotWearingArmorMaterial(entity, target, "iron");
+			}
+			case MobConfigManager.CONDITION_NOT_WEARING_GOLD -> {
+				yield isPlayerNotWearingArmorMaterial(entity, target, "gold");
+			}
+			case MobConfigManager.CONDITION_NOT_WEARING_NETHERITE -> {
+				yield isPlayerNotWearingArmorMaterial(entity, target, "netherite");
+			}
 			default -> false;
 		};
+	}
+
+	private static boolean hasPlayerWearingArmorMaterial(
+		LivingEntity entity,
+		LivingEntity target,
+		String material
+	) {
+		String normalizedMaterial = normalize(material);
+		if (normalizedMaterial.isBlank()) {
+			return false;
+		}
+		if (target != null) {
+			return target instanceof Player player && isWearingArmorMaterial(player, normalizedMaterial);
+		}
+
+		// The vanilla target goal performs the nearby-player search. Candidate
+		// filtering and Mob#setTarget enforce this condition once a player exists,
+		// so do not duplicate that search during goal startup.
+		return true;
+	}
+
+	private static boolean isPlayerNotWearingArmorMaterial(
+		LivingEntity entity,
+		LivingEntity target,
+		String material
+	) {
+		if (target == null) {
+			// Let the vanilla target goal perform its nearby-player search. The
+			// candidate-level check below applies the negated condition.
+			return true;
+		}
+		return !hasPlayerWearingArmorMaterial(entity, target, material);
+	}
+
+	private static boolean isWearingArmorMaterial(Player player, String material) {
+		if (player == null) {
+			return false;
+		}
+		return switch (material) {
+			case "iron" -> hasArmorPiece(player, Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS);
+			case "gold", "golden" -> hasArmorPiece(player, Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_BOOTS);
+			case "netherite" -> hasArmorPiece(player, Items.NETHERITE_HELMET, Items.NETHERITE_CHESTPLATE, Items.NETHERITE_LEGGINGS, Items.NETHERITE_BOOTS);
+			default -> false;
+		};
+	}
+
+	private static boolean hasArmorPiece(Player player, net.minecraft.world.item.Item... armorPieces) {
+		return player.getItemBySlot(EquipmentSlot.HEAD).is(armorPieces[0])
+			|| player.getItemBySlot(EquipmentSlot.CHEST).is(armorPieces[1])
+			|| player.getItemBySlot(EquipmentSlot.LEGS).is(armorPieces[2])
+			|| player.getItemBySlot(EquipmentSlot.FEET).is(armorPieces[3]);
 	}
 
 	private static boolean hasNearbyPlayer(

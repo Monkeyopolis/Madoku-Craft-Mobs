@@ -74,7 +74,8 @@ public final class MobVariantAppearanceManager {
 
 	private static String createServerSnapshot() {
 		JsonObject snapshot = new JsonObject();
-		for (Map.Entry<String, VariantAppearance> entry : collectAppearances(MobConfigManager.getRuntimeMobFiles()).entrySet()) {
+		Map<String, VariantAppearance> appearances = collectAppearances(MobConfigManager.getRuntimeMobFiles());
+		for (Map.Entry<String, VariantAppearance> entry : appearances.entrySet()) {
 			JsonObject appearance = new JsonObject();
 			VariantAppearance value = entry.getValue();
 			if (value.texture() != null) {

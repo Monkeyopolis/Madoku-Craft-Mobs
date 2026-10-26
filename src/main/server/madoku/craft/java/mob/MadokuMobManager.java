@@ -18,6 +18,7 @@ public final class MadokuMobManager {
 	}
 
 	public static void onServerStarted(MinecraftServer server) {
+		FrostbiteManager.reset();
 		EntityGoalsManager.clearRuntimeCache();
 		// Integrated servers can stop and restart inside the same JVM. The server-stop
 		// hook clears these runtime configuration snapshots, so reload them before
@@ -31,12 +32,14 @@ public final class MadokuMobManager {
 	}
 
 	public static void onServerTick(MinecraftServer server) {
+		FrostbiteManager.onServerTick();
 		MobRegionalDifficultyManager.onServerTick(server);
 		MobIndicatorManager.onServerTick(server);
 		MobEntityManager.onServerTick(server);
 	}
 
 	public static void onServerStopped() {
+		FrostbiteManager.reset();
 		EntityGoalsManager.clearRuntimeCache();
 		MobVariantAppearanceManager.onServerStopped();
 		MobIndicatorManager.onServerStopped();

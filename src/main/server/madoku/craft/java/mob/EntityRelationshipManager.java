@@ -40,6 +40,16 @@ public final class EntityRelationshipManager {
 			&& (target == attacker.getLastHurtByMob() || target == attacker.getLastHurtByPlayer());
 	}
 
+	/**
+	 * Shared policy for selecting a target through proactive AI acquisition.
+	 * Direct retaliation still uses {@link #canSetTarget(Mob, LivingEntity)} so
+	 * configured target-player conditions do not disable hurt-by-target behavior.
+	 */
+	public static boolean canAcquireTarget(Mob attacker, LivingEntity target) {
+		return canSetTarget(attacker, target)
+			&& !EntityGoalsManager.shouldIgnorePlayerTarget(attacker, target);
+	}
+
 	static void forceSetTargetFromConfiguredAnger(Mob mob, LivingEntity target) {
 		if (mob == null) {
 			return;

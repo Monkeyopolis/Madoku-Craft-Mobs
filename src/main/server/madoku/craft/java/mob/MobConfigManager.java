@@ -82,6 +82,7 @@ public final class MobConfigManager {
 	public static final String FILE_HAG = "hag";
 	public static final String FILE_BEE = "bee";
 	public static final String FILE_PIGLIN = "piglin";
+	public static final String FILE_ZOMBIFIED_PIGLIN = "zombified-piglin";
 	public static final String FILE_PILLAGER = "pillager";
 	public static final String FILE_ENDERMAN = "enderman";
 
@@ -136,6 +137,7 @@ public final class MobConfigManager {
 	public static final String FIELD_WEIGHT = "weight";
 	public static final String FIELD_COOLDOWN_TICKS = "cooldown-ticks";
 	public static final String FIELD_CONDITION = "condition";
+	public static final String FIELD_MATERIAL = "material";
 	public static final String FIELD_DISTANCE = "distance";
 	public static final String FIELD_LINE_OF_SIGHT = "line-of-sight";
 	public static final String FIELD_SPEED = "speed";
@@ -144,6 +146,13 @@ public final class MobConfigManager {
 	public static final String CONDITION_LIGHT_LEVEL = "light-level";
 	public static final String CONDITION_PLAYER_NEARBY = "player-nearby";
 	public static final String CONDITION_EYES_LOOKED_AT = "eyes-looked-at";
+	public static final String CONDITION_WEARING_ARMOR = "wearing-armor";
+	public static final String CONDITION_WEARING_IRON = "wearing-iron";
+	public static final String CONDITION_WEARING_GOLD = "wearing-gold";
+	public static final String CONDITION_NOT_WEARING_ARMOR = "not-wearing-armor";
+	public static final String CONDITION_NOT_WEARING_IRON = "not-wearing-iron";
+	public static final String CONDITION_NOT_WEARING_GOLD = "not-wearing-gold";
+	public static final String CONDITION_NOT_WEARING_NETHERITE = "not-wearing-netherite";
 	public static final String FIELD_PROTECT_PARENT_WHEN_HURT = "protect-parent-when-hurt";
 	public static final String FIELD_RETALIATE_WHEN_HURT = "retaliate-when-hurt";
 	public static final String FIELD_CALLS_REINFORCEMENTS_WHEN_HURT = "calls-reinforcements-when-hurt";
@@ -371,7 +380,8 @@ public final class MobConfigManager {
 		Map<String, JsonObject> defaults = new LinkedHashMap<>();
 		for (String key : List.of(FILE_BEE, FILE_BOGGED, FILE_CAVE_SPIDER, FILE_CREEPER, FILE_DROWNED,
 			FILE_HAG, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_SPIDER, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_PILLAGER, FILE_ENDERMAN)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_ZOMBIFIED_PIGLIN,
+			FILE_PILLAGER, FILE_ENDERMAN)) {
 			defaults.put(key, buildNewDynamicEntityDefaults(key));
 		}
 		return defaults;
@@ -385,7 +395,8 @@ public final class MobConfigManager {
 		mobId = JSONAPIManager.normalizeRegistryIdentifierForJson(mobId);
 		JsonObject entityVariant = buildEntityVariantDefaults(key);
 		if (List.of(FILE_BOGGED, FILE_DROWNED, FILE_HUSK, FILE_PARCHED, FILE_SKELETON, FILE_STRAY,
-			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_PILLAGER).contains(key)) {
+			FILE_WITHER_SKELETON, FILE_ZOMBIE, FILE_ZOMBIE_VILLAGER, FILE_PIGLIN, FILE_ZOMBIFIED_PIGLIN,
+			FILE_PILLAGER).contains(key)) {
 			entityVariant.getAsJsonObject(FIELD_MOB_COMPONENTS).addProperty(FIELD_WEAPON_DAMAGE, false);
 		}
 		JsonObject entityRoot = new JsonObject();
@@ -561,10 +572,31 @@ public final class MobConfigManager {
 			case FILE_HUSK -> buildHuskVariantDefaults();
 			case FILE_PARCHED -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:slowness", "minecraft-equipment-parched.json", "minecraft-entities-parched.json", "parched-jockey");
 			case FILE_PIGLIN -> buildPiglinVariantDefaults();
+			case FILE_ZOMBIFIED_PIGLIN -> buildZombifiedPiglinVariantDefaults();
 			case FILE_PILLAGER -> buildPillagerVariantDefaults();
 			case FILE_SKELETON -> buildSkeletonVariantDefaults();
 			case FILE_SPIDER -> buildSpiderVariantDefaults();
-			case FILE_STRAY -> buildBowSkeletonVariantDefaults(12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D, "minecraft:weakness", "minecraft-equipment-stray.json", "minecraft-entities-stray.json", "stray-jockey");
+			case FILE_STRAY -> {
+				JsonObject variant = buildBowSkeletonVariantDefaults(
+					12.0D, 2.0D, 0.27D, 1.0D, 7, 4.0D,
+					"minecraft:weakness", "minecraft-equipment-stray.json", "minecraft-entities-stray.json", "stray-jockey", 85.0D
+				);
+				JsonObject frosted = buildBowSkeletonEliteVariantDefaults(
+					20.0D, 2.0D, 0.30D, 1.0D, 11, 2.0D,
+					null, "minecraft-equipment-stray.json", "minecraft-entities-stray.json", 5.0D
+				);
+				JsonObject appearance = new JsonObject();
+				appearance.addProperty(FIELD_APPEARANCE_TEXTURE, "madoku-craft:textures/entity/skeleton/frosted-stray.png");
+				appearance.addProperty(FIELD_APPEARANCE_ARMOR, "madoku-craft:textures/entity/skeleton/frosted-stray-overlay.png");
+				JsonObject frostParticles = new JsonObject();
+				frostParticles.addProperty(FIELD_APPEARANCE_PARTICLE_TYPE, "minecraft:dust");
+				frostParticles.addProperty(FIELD_APPEARANCE_PARTICLE_COLOR, "#9A9A9A");
+				frostParticles.addProperty(FIELD_APPEARANCE_PARTICLE_SCALE, 0.65D);
+				appearance.add(FIELD_APPEARANCE_PARTICLES, frostParticles);
+				frosted.getAsJsonObject(FIELD_SPAWN_RULES).add(FIELD_VARIANT_APPEARANCE, appearance);
+				variant.add("frosted-stray", frosted);
+				yield variant;
+			}
 			case FILE_WITHER_SKELETON -> buildWitherSkeletonVariantDefaults();
 			case FILE_ZOMBIE -> buildZombieVariantDefaults();
 			case FILE_ZOMBIE_VILLAGER -> buildZombieVillagerVariantDefaults();
@@ -592,6 +624,7 @@ public final class MobConfigManager {
 				entityTypes.add(FILE_BEE.equals(fileKey) || FILE_HAG.equals(fileKey)
 					|| (FILE_SPIDER.equals(fileKey)
 						&& ("albino-spider".equals(variantKey) || FIELD_ADULT_GROUP.equals(variantKey) || FIELD_BABY_GROUP.equals(variantKey)))
+					|| FILE_PIGLIN.equals(fileKey) || FILE_ZOMBIFIED_PIGLIN.equals(fileKey)
 					? ENTITY_TYPE_NEUTRAL
 					: ENTITY_TYPE_HOSTILE);
 				components.add(FIELD_ENTITY_TYPE, entityTypes);
@@ -733,7 +766,7 @@ public final class MobConfigManager {
 			buildComponents(28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
 				"minecraft-entities-piglin.json", "minecraft:golden_sword", null, 0, false, null, null),
 			buildSpawnRules(25.0D, "minecraft-equipment-piglin.json"), new JsonObject(),
-			buildGoals("hurt-by-target", "target-player", "melee-attack")
+			buildPiglinTargetGoals(CONDITION_NOT_WEARING_GOLD, "hurt-by-target", "target-player", "melee-attack")
 		);
 
 		JsonObject spearComponents = buildComponents(
@@ -744,12 +777,12 @@ public final class MobConfigManager {
 		variant.add("spear-piglin", buildVariant(
 			spearComponents,
 			buildSpawnRules(25.0D, "minecraft-equipment-piglin.json"), new JsonObject(),
-			buildGoals("hurt-by-target", "target-player", "melee-attack")
+			buildPiglinTargetGoals(CONDITION_NOT_WEARING_GOLD, "hurt-by-target", "target-player", "melee-attack")
 		));
 		addPiglinAgeVariants(variant);
 		addPiglinAgeVariants(variant.getAsJsonObject("spear-piglin"));
 
-		JsonObject crossbowGoals = buildGoals("hurt-by-target", "target-player", "ranged-attack");
+		JsonObject crossbowGoals = buildPiglinTargetGoals(CONDITION_NOT_WEARING_GOLD, "hurt-by-target", "target-player", "ranged-attack");
 		crossbowGoals.getAsJsonObject(FIELD_RANGED_ATTACK)
 			.getAsJsonObject(FIELD_PROJECTILE_SET_ON_FIRE)
 			.addProperty(FIELD_ENABLED, true);
@@ -761,6 +794,58 @@ public final class MobConfigManager {
 		));
 		addPiglinAgeVariants(variant.getAsJsonObject("crossbow-piglin"), true);
 		return variant;
+	}
+
+	private static JsonObject buildZombifiedPiglinVariantDefaults() {
+		JsonObject variant = buildVariant(
+			buildComponents(28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
+				"minecraft-entities-zombified-piglin.json", "minecraft:iron_sword", null, 0, false, null, null),
+			buildSpawnRules(25.0D, "minecraft-equipment-zombified-piglin.json"), new JsonObject(),
+			buildPiglinTargetGoals(CONDITION_NOT_WEARING_IRON, "hurt-by-target", "target-player", "melee-attack")
+		);
+
+		JsonObject spearComponents = buildComponents(
+			28.0D, null, 7.0D, 0.30D, null, null, null, 1.0D, 11, null, null, null, null,
+			"minecraft-entities-zombified-piglin.json", "minecraft:iron_spear", null, 0, false, null, null
+		);
+		spearComponents.addProperty(FIELD_WEAPON_DAMAGE, false);
+		variant.add("spear-zombified-piglin", buildVariant(
+			spearComponents,
+			buildSpawnRules(25.0D, "minecraft-equipment-zombified-piglin.json"), new JsonObject(),
+			buildPiglinTargetGoals(CONDITION_NOT_WEARING_IRON, "hurt-by-target", "target-player", "melee-attack")
+		));
+		addPiglinAgeVariants(variant);
+		addPiglinAgeVariants(variant.getAsJsonObject("spear-zombified-piglin"));
+
+		JsonObject rangedGoals = buildPiglinTargetGoals(CONDITION_NOT_WEARING_IRON, "hurt-by-target", "target-player", "ranged-attack");
+		rangedGoals.getAsJsonObject(FIELD_RANGED_ATTACK)
+			.getAsJsonObject(FIELD_PROJECTILE_SET_ON_FIRE)
+			.addProperty(FIELD_ENABLED, true);
+		variant.add("bow-zombified-piglin", buildVariant(
+			buildComponents(24.0D, null, null, 0.30D, null, null, null, 1.0D, 11, 6.0D, 0.7D, 20.0D, 10.0D,
+				"minecraft-entities-zombified-piglin.json", "minecraft:bow", null, 0, null, null, null),
+			buildSpawnRules(50.0D, "minecraft-equipment-zombified-piglin.json"), buildBehavior(false, true, false, false),
+			rangedGoals
+		));
+		addPiglinAgeVariants(variant.getAsJsonObject("bow-zombified-piglin"), true);
+		return variant;
+	}
+
+	private static JsonObject buildPiglinTargetGoals(String condition, String... keys) {
+		JsonObject goals = buildGoals(keys);
+		JsonObject targetPlayer = goals.getAsJsonObject(FIELD_TARGET_PLAYER);
+		if (targetPlayer == null || condition == null || condition.isBlank()) {
+			return goals;
+		}
+		JsonArray conditions = new JsonArray();
+		JsonObject targetCondition = new JsonObject();
+		targetCondition.addProperty(FIELD_CONDITION, condition);
+		conditions.add(targetCondition);
+		JsonObject netheriteCondition = new JsonObject();
+		netheriteCondition.addProperty(FIELD_CONDITION, CONDITION_NOT_WEARING_NETHERITE);
+		conditions.add(netheriteCondition);
+		targetPlayer.add(FIELD_CONDITIONS, conditions);
+		return goals;
 	}
 
 	private static JsonObject buildPillagerVariantDefaults() {
@@ -801,10 +886,33 @@ public final class MobConfigManager {
 		double health, double damage, double movementSpeed, double scale, int experienceDrop,
 		double rangedDamage, String effect, String equipmentReference, String mobDrops, String jockeyKey
 	) {
+		return buildBowSkeletonVariantDefaults(
+			health, damage, movementSpeed, scale, experienceDrop, rangedDamage,
+			effect, equipmentReference, mobDrops, jockeyKey, 90.0D
+		);
+	}
+
+	private static JsonObject buildBowSkeletonEliteVariantDefaults(
+		double health, double damage, double movementSpeed, double scale, int experienceDrop,
+		double rangedDamage, String effect, String equipmentReference, String mobDrops, double spawnWeight
+	) {
+		return buildVariant(
+			buildComponents(health, null, damage, movementSpeed, null, null, null, scale, experienceDrop,
+				rangedDamage, 0.7D, 20.0D, 10.0D, mobDrops, "minecraft:bow", effect, 15, null, null, null),
+			buildSpawnRules(spawnWeight, equipmentReference), buildBehavior(false, true, false, false),
+			buildGoals("hurt-by-target", "target-player", "ranged-attack")
+		);
+	}
+
+	private static JsonObject buildBowSkeletonVariantDefaults(
+		double health, double damage, double movementSpeed, double scale, int experienceDrop,
+		double rangedDamage, String effect, String equipmentReference, String mobDrops, String jockeyKey,
+		double spawnWeight
+	) {
 		JsonObject variant = buildVariant(
 			buildComponents(health, null, damage, movementSpeed, null, null, null, scale, experienceDrop,
 				rangedDamage, 0.7D, 20.0D, 10.0D, mobDrops, "minecraft:bow", effect, 15, null, null, null),
-			buildSpawnRules(90.0D, equipmentReference), buildBehavior(false, true, false, false),
+			buildSpawnRules(spawnWeight, equipmentReference), buildBehavior(false, true, false, false),
 			buildGoals("hurt-by-target", "target-player", "ranged-attack")
 		);
 		String passengerType = JSONAPIManager.normalizeRegistryIdentifierForJson(

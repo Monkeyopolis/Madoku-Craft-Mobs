@@ -5,6 +5,7 @@ import java.util.List;
 import madoku.craft.java.mob.CreeperVariantArmorLayer;
 import madoku.craft.java.mob.LivingEntityRendererLayersAccess;
 import madoku.craft.java.mob.MobAppearanceRenderManager;
+import madoku.craft.java.mob.MobRendererLayerManager;
 import madoku.craft.java.mob.MobVariantRenderStateAccess;
 import net.minecraft.client.model.monster.creeper.CreeperModel;
 import net.minecraft.client.renderer.entity.CreeperRenderer;
@@ -36,7 +37,11 @@ public abstract class CreeperRendererMixin {
 		List<RenderLayer<CreeperRenderState, CreeperModel>> layers =
 			(List<RenderLayer<CreeperRenderState, CreeperModel>>) (List<?>)
 				((LivingEntityRendererLayersAccess) (Object) this).madokuCraft$getLayers();
-		layers.add(new CreeperVariantArmorLayer(parent, context.getModelSet()));
+		MobRendererLayerManager.addIfAbsent(
+			layers,
+			CreeperVariantArmorLayer.class,
+			new CreeperVariantArmorLayer(parent, context.getModelSet())
+		);
 	}
 
 	@Inject(

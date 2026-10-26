@@ -65,6 +65,7 @@ import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import java.util.concurrent.ConcurrentHashMap;
 
+
 public final class MobEntityManager {
 
 	public interface DifficultyState {
@@ -757,6 +758,44 @@ public final class MobEntityManager {
 		return EntityBehaviorsManager.WitherSkeletonBehavior.applyWitherSkeletonHitEffect(target, attacker);
 	}
 
+	/**
+	 * Applies a mob's configured attack effect while keeping vanilla behavior when
+	 * the mob is not managed by Madoku. A managed mob with no configured effect
+	 * intentionally applies nothing, allowing variants such as Frosted Stray to
+	 * disable a vanilla effect explicitly by omission.
+	 */
+	public static boolean applyConfiguredMobAttackEffect(
+		LivingEntity target,
+		LivingEntity attacker,
+		MobEffectInstance vanillaEffect
+	) {
+		if (target == null || attacker == null || target.level().isClientSide()) {
+			return false;
+		}
+		if (!MobConfigManager.isEnabled()) {
+			return vanillaEffect != null && target.addEffect(vanillaEffect, attacker);
+		}
+
+		JsonObject runtimeRoot = resolveMobAttackRoot(attacker);
+		if (runtimeRoot.entrySet().isEmpty()) {
+			return vanillaEffect != null && target.addEffect(vanillaEffect, attacker);
+		}
+
+		MobEffectInstance configuredEffect = resolveConfiguredMobEffectInstance(
+			readMobComponentsRoot(runtimeRoot),
+			null
+		);
+		return configuredEffect != null && target.addEffect(configuredEffect, attacker);
+	}
+
+	/** Returns whether vanilla's built-in attack effect should be suppressed. */
+	public static boolean shouldSuppressVanillaMobAttackEffect(LivingEntity attacker) {
+		return attacker != null
+			&& !attacker.level().isClientSide()
+			&& MobConfigManager.isEnabled()
+			&& !resolveMobAttackRoot(attacker).entrySet().isEmpty();
+	}
+
 	public static void applySkeletonArrowHitEffect(LivingEntity target, Entity attacker) {
 		if (target == null || attacker == null || target.level().isClientSide() || !MobConfigManager.isEnabled()) {
 			return;
@@ -764,13 +803,12 @@ public final class MobEntityManager {
 		if (!(attacker instanceof AbstractSkeleton skeleton)) {
 			return;
 		}
-		JsonObject runtimeRoot = resolveSkeletonVariantRuntimeRoot(skeleton);
-		if (runtimeRoot.entrySet().isEmpty()) {
-			return;
-		}
-		MobEffectInstance configuredEffect = resolveConfiguredMobEffectInstance(readMobComponentsRoot(runtimeRoot), null);
-		if (configuredEffect != null) {
-			target.addEffect(configuredEffect, skeleton);
+		applyConfiguredMobAttackEffect(target, skeleton, null);
+		if (skeleton.getType() == MobEntityTypeAPIManager.STRAY) {
+			boolean frostedStray = EntityBehaviorsManager.StrayBehavior.isFrostedStray(skeleton);
+			if (frostedStray) {
+				FrostbiteManager.apply(target, skeleton);
+			}
 		}
 	}
 
@@ -1606,6 +1644,7 @@ public final class MobEntityManager {
 		UUID id = entity.getUUID();
 		PENDING_ALTERNATIVE_REPLACEMENTS.remove(id);
 		if (entity instanceof LivingEntity livingEntity) {
+			FrostbiteManager.onEntityCleanup(entity);
 			EntityGoalsManager.onEntityCleanup(livingEntity);
 		}
 		EntityBehaviorsManager.SkeletonBehavior.onEntityCleanup(entity);
@@ -1800,7 +1839,8 @@ public final class MobEntityManager {
 			return resolveBeeRootForRuntime(attacker);
 		}
 		String configuredFileKey = resolveRuntimeMobFileKey(attacker);
-		if ((attacker instanceof Piglin || attacker instanceof Pillager)
+		if ((attacker instanceof Piglin || attacker instanceof Pillager
+			|| attacker.getType() == MobEntityTypeAPIManager.ZOMBIFIED_PIGLIN)
 			&& !configuredFileKey.isBlank() && isMobFileEnabled(configuredFileKey)) {
 			return resolveConfiguredEntityVariantForRuntime(attacker);
 		}
